@@ -3,10 +3,12 @@ import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { mkdir, readFile } from 'node:fs/promises'
 import { extname, join, resolve, sep } from 'node:path'
-import { chromium } from 'playwright'
+import { chromium, devices, webkit } from 'playwright'
 
 const root = resolve('dist')
 const base = '/SUSTech-3D-Sandbox/'
+const engine = process.argv[2] ?? process.env.SUSTECH_BROWSER ?? 'chromium'
+assert.ok(['chromium', 'webkit'].includes(engine), 'Expected SUSTECH_BROWSER to be chromium or webkit')
 const results = resolve(process.env.SUSTECH_SCREENSHOT_DIR ?? 'test-results')
 await mkdir(results, { recursive: true })
 
@@ -73,11 +75,13 @@ async function frameSample(page) {
 
 try {
   const args = process.env.SUSTECH_SOFTWARE_GL === '1' ? ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] : []
-  browser = await chromium.launch({ executablePath: process.env.SUSTECH_CHROME_PATH, args })
+  browser = engine === 'webkit' ? await webkit.launch() : await chromium.launch({ executablePath: process.env.SUSTECH_CHROME_PATH, args })
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
   await context.addInitScript(() => {
-    const original = AudioContext.prototype.createDynamicsCompressor
-    AudioContext.prototype.createDynamicsCompressor = function () {
+    const contextClass = window.AudioContext ?? window.webkitAudioContext
+    if (!contextClass) return
+    const original = contextClass.prototype.createDynamicsCompressor
+    contextClass.prototype.createDynamicsCompressor = function () {
       const compressor = original.call(this)
       const meter = this.createAnalyser()
       meter.fftSize = 1024
@@ -102,7 +106,7 @@ try {
   assert.equal(campus.language, 'zh-CN')
   assert.equal(campus.buildings, 113)
   assert.equal(campus.elevationRange, 123)
-  assert.equal(await page.locator('.landmark-item').count(), 14)
+  assert.equal(await page.locator('.landmark-item').count(), 15)
   assert.ok(await page.locator('.map-pin:visible').count() >= 3)
   const campusHash = await shot(page, 'campus.png')
   report('Production assets load from the GitHub Pages project path, with terrain, buildings and landmark labels.')
@@ -128,21 +132,42 @@ try {
   await page.click('[data-landmark="engineering"]')
   await page.waitForFunction(() => Math.hypot(...window.readSandboxState().camera.map((v, i) => v - window.readSandboxState().target[i])) < 43)
   assert.equal(await page.locator('#landmark-info h2').textContent(), '工学院')
+  const dimensions = page.locator('#landmark-info .landmark-specs strong')
+  assert.deepEqual(await dimensions.allTextContents(), ['9 层 · 42.3 米', '10 层 · 46.8 米'])
+  assert.equal(await page.locator('#landmark-info .landmark-source').getAttribute('href'), 'https://aa.sustech.edu.cn/news/detail/27.html')
   assert.notEqual(await shot(page, 'campus-detail.png'), campusHash)
   report('Orbit, wheel zoom, right-button pan, top-down view, reset, and landmark close-up work.')
 
+  for (const [id, count] of [['yidan', 4], ['learning-nexus', 2], ['lynn', 3]]) {
+    await page.click(`[data-landmark="${id}"]`)
+    assert.deepEqual(await dimensions.allTextContents(), [`${count} 层`])
+  }
+  await page.waitForTimeout(620)
+  await shot(page, 'lynn-library.png')
+  await page.click('[data-landmark="humanities"]')
+  assert.equal(await page.locator('#landmark-info h2').textContent(), '人文社会科学学院')
+  await page.waitForTimeout(620)
+  await shot(page, 'humanities.png')
+  await page.click('[data-landmark="engineering"]')
   await page.click('#language')
   assert.equal(await page.locator('#landmark-info h2').textContent(), 'College of Engineering')
+  assert.deepEqual(await dimensions.allTextContents(), ['9 floors · 42.3 m', '10 floors · 46.8 m'])
   assert.equal(await page.locator('html').getAttribute('lang'), 'en-US')
+  report('Published Engineering heights and library floor counts render in both languages, with links to their sources.')
+  const canFullscreen = await page.evaluate(() => (document.fullscreenEnabled && !!document.documentElement.requestFullscreen) || !!document.documentElement.webkitRequestFullscreen)
   await page.click('#fullscreen')
-  await page.waitForFunction(() => !!document.fullscreenElement)
-  await page.click('#fullscreen')
-  await page.waitForFunction(() => !document.fullscreenElement)
+  if (canFullscreen) {
+    await page.waitForFunction(() => !!(document.fullscreenElement || document.webkitFullscreenElement))
+    await page.click('#fullscreen')
+    await page.waitForFunction(() => !(document.fullscreenElement || document.webkitFullscreenElement))
+  } else {
+    assert.equal(await page.locator('#toast').textContent(), 'Fullscreen is unavailable in this browser.')
+  }
   for (const quality of ['low', 'medium', 'high']) {
     await page.selectOption('#quality', quality)
     assert.equal((await read(page)).quality, quality)
   }
-  report('Immediate English translation, all quality levels, and entering and exiting fullscreen work.')
+  report(`Immediate English translation, all quality levels, and ${canFullscreen ? 'native fullscreen' : 'the unsupported-fullscreen message'} work.`)
 
   await page.click('#sandbox-tab')
   await ready(page, 'sandbox')
@@ -152,14 +177,19 @@ try {
   await shot(page, 'sandbox.png')
   report('The separate sandbox opens with 12 intact fictional structures.')
 
-  await page.click('#rebuild')
-  await page.waitForFunction(() => (window.soundMeter?.() ?? 0) > .003, undefined, { polling: 20, timeout: 5000 })
-  await page.click('#sound')
-  await page.waitForFunction(() => (window.soundMeter?.() ?? 1) < .0005)
-  await page.click('#rebuild')
-  await page.waitForTimeout(180)
-  assert.ok(await page.evaluate(() => window.soundMeter() < .0005))
-  report('The Web Audio graph produces a signal and remains silent while muted.')
+  if (await page.locator('#sound').isEnabled()) {
+    await page.click('#rebuild')
+    await page.waitForFunction(() => (window.soundMeter?.() ?? 0) > .003, undefined, { polling: 20, timeout: 5000 })
+    await page.click('#sound')
+    await page.waitForFunction(() => (window.soundMeter?.() ?? 1) < .0005)
+    await page.click('#rebuild')
+    await page.waitForTimeout(180)
+    assert.ok(await page.evaluate(() => window.soundMeter() < .0005))
+    report('The Web Audio graph produces a signal and remains silent while muted.')
+  } else {
+    assert.equal(await page.locator('#sound').getAttribute('aria-label'), 'Sound is unavailable in this browser')
+    report('The sound control indicates that this browser lacks Web Audio.')
+  }
 
   await page.keyboard.press('1')
   assert.equal(await page.locator('#tool-grenade').getAttribute('aria-pressed'), 'true')
@@ -231,7 +261,9 @@ try {
   report('Language, graphics and sound settings persist after reload.')
   await context.close()
 
-  const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true })
+  const mobileOptions = engine === 'webkit' ? { ...devices['iPhone 15'], deviceScaleFactor: 1 }
+    : { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }
+  const mobileContext = await browser.newContext(mobileOptions)
   const mobile = await mobileContext.newPage()
   track(mobile)
   await mobile.goto(url, { waitUntil: 'domcontentloaded' })
@@ -239,6 +271,7 @@ try {
   await mobile.tap('#landmark-toggle')
   await mobile.tap('[data-landmark="lynn"]')
   assert.equal(await mobile.locator('#landmark-info h2').textContent(), '琳恩图书馆')
+  assert.equal(await mobile.locator('#landmark-info .landmark-specs strong').textContent(), '3 层')
   await mobile.tap('#reset')
   await mobile.tap('#landmark-toggle')
   await shot(mobile, 'campus-mobile.png')
@@ -247,10 +280,20 @@ try {
   const target = (await read(mobile)).targetScreen
   await mobile.touchscreen.tap(...target)
   await waitPhysics(mobile, 1)
-  assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), 390)
+  assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), mobileOptions.viewport.width)
   await shot(mobile, 'sandbox-mobile.png')
+  const { width, height } = mobileOptions.viewport
+  await mobile.setViewportSize({ width: height, height: width })
+  await mobile.waitForFunction(() => {
+    const dock = document.querySelector('.tool-dock').getBoundingClientRect()
+    const controls = document.querySelector('.camera-actions').getBoundingClientRect()
+    return dock.width > 0 && dock.left >= 0 && dock.right <= innerWidth && dock.bottom <= innerHeight
+      && controls.right <= innerWidth && controls.bottom <= innerHeight
+  })
+  await mobile.tap('#rebuild')
+  assert.equal((await read(mobile)).physics.fragments, 0)
   await mobileContext.close()
-  report('A 390 px touch viewport can explore landmarks, switch modes, and trigger physics without horizontal overflow.')
+  report(`${engine} at ${width} px supports mobile landmark selection, scene switching and touch effects. The controls stay visible after rotation.`)
   assert.deepEqual(issues, [])
   report('No page exceptions, console errors, or failed asset requests.')
 } finally {

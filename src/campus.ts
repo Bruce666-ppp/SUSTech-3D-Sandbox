@@ -1,12 +1,15 @@
 import * as T from 'three'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import {
+  addLandmarkRoof, addLynnFacadeFin, buildingsWithPublishedData, campusReferences, colorize, footprintAnchor, landmarkFootprints,
+} from './campus-architecture'
 import osm from './data/osm-campus.json'
 import elevation from './data/elevation.json'
 import {
   type Bounds, type Point, type Height, Instances, boundsOf, centerOf, clipPolygon,
   disposeScene, inside, makeTerrain, makeWater, planar, randomSource, rectangle, ribbon,
 } from './model'
-import type { CampusWorld, Landmark, Localized } from './world'
+import type { CampusWorld, Landmark, LandmarkDimensions, Localized } from './world'
 
 interface Footprint {
   id: string
@@ -80,6 +83,11 @@ const styles = {
   dorm: ['#c7b592', '#8a7b6c', '#536963', '#dbcaab'],
   campus: ['#a5aca5', '#4b5c56', '#415650', '#c4c9bc'],
   library: ['#a8b7ae', '#789393', '#2c6973', '#d2d6c8'],
+  lynn: ['#bfc6be', '#a4ada6', '#345b67', '#e0e2d5'],
+  engineering: ['#bca98b', '#959689', '#38606a', '#dcd1b9'],
+  yidan: ['#9d765f', '#8b9189', '#2c616b', '#b89572'],
+  nexus: ['#aeab91', '#8d9d95', '#385f67', '#d4c5a8'],
+  center: ['#ac8c72', '#9ca193', '#41676c', '#d5c4aa'],
   hall: ['#baae9a', '#90674f', '#4e6366', '#d9cbb6'],
   gym: ['#a1aaa8', '#738d91', '#355c65', '#dce5dd'],
 } as const
@@ -92,6 +100,7 @@ interface LandmarkInfo {
   category: Localized
   description: Localized
   icon: string
+  dimensions?: LandmarkDimensions
   pin?: boolean
   wide?: boolean
   point?: Point
@@ -100,23 +109,35 @@ interface LandmarkInfo {
 const library = ['图书馆', 'Library'] as const
 const sport = ['体育设施', 'Sports'] as const
 const study = ['教学与科研', 'Teaching & research'] as const
+
+function dimensions(source: string, ...buildings: [id: string, label?: Localized][]): LandmarkDimensions {
+  return { source, buildings: buildings.map(([id, label]) => {
+    const profile = buildingsWithPublishedData.get(id)!
+    return { label, floors: profile.floors, heightMeters: profile.publishedMeters }
+  }) }
+}
+
 const landmarkInfo: LandmarkInfo[] = [
-  { id: 'lynn', osmId: '533170974', name: ['琳恩图书馆', 'Lynn Library'], category: library, icon: 'book', pin: true,
-    description: ['位于第一教学楼对面，设有阅览、馆藏和学习空间。建筑邻近一期教学科研组团。', 'Opposite Lecture Hall 1, this library houses reading, study and collection spaces beside the original academic precinct.'] },
-  { id: 'engineering', osmId: '695571961', name: ['工学院', 'College of Engineering'], category: study, icon: 'building', pin: true, wide: true,
-    description: ['西侧工学院组团由南、北座及相邻广场构成，连接山坡步道和学生生活区。', 'The north and south engineering buildings connect their forecourts to hillside paths and nearby student housing.'] },
+  { id: 'lynn', osmId: landmarkFootprints.lynn, name: ['琳恩图书馆', 'Lynn Library'], category: library, icon: 'book', pin: true,
+    dimensions: dimensions(campusReferences.lynn, [landmarkFootprints.lynn]),
+    description: ['位于第一教学楼对面。弧形立面由重复的几何遮阳构件组成，屋面设有八组三角天窗。', 'Opposite Lecture Hall 1, the curved façade has repeating geometric shades, and eight triangular skylights punctuate the roof.'] },
+  { id: 'engineering', osmId: landmarkFootprints.engineeringSouth, name: ['工学院', 'College of Engineering'], category: study, icon: 'building', pin: true, wide: true,
+    dimensions: dimensions(campusReferences.engineering, [landmarkFootprints.engineeringSouth, ['南楼', 'South building']], [landmarkFootprints.engineeringNorth, ['北楼', 'North building']]),
+    description: ['南楼呈 C 形，北楼呈 U 形。两栋楼沿山坡布置，庭院与广场连通校园步道。', 'A C-shaped south building and a U-shaped north building follow the hillside, with courtyards and plazas linked to campus paths.'] },
   { id: 'stadium', osmId: '6054395700', name: ['松禾体育场', 'Songhe Stadium'], category: sport, icon: 'track', pin: true, wide: true,
     description: ['位于校园东北部体育组团，设有环形跑道和中央运动场，东侧毗邻润杨体育馆。', 'The athletics track wraps around a central field in the campus sports precinct, close to Runyang Gymnasium.'] },
-  { id: 'learning-nexus', osmId: '876065295', name: ['涵泳图书馆', 'Learning Nexus'], category: library, icon: 'book', pin: true,
+  { id: 'learning-nexus', osmId: landmarkFootprints.nexus, name: ['涵泳图书馆', 'Learning Nexus'], category: library, icon: 'book', pin: true,
+    dimensions: dimensions(campusReferences.nexus, [landmarkFootprints.nexus]),
     description: ['位于工学院与宿舍组团之间，提供阅读和协作学习空间。', 'Between Engineering and the residence precinct, the Learning Nexus offers reading and collaborative study spaces.'] },
-  { id: 'center', osmId: 'r12480428', name: ['南科大中心', 'SUSTech Center'], category: ['公共空间', 'Public space'], icon: 'building', pin: true, wide: true,
+  { id: 'center', osmId: landmarkFootprints.center, name: ['南科大中心', 'SUSTech Center'], category: ['公共空间', 'Public space'], icon: 'building', pin: true, wide: true,
     description: ['二期校园的公共组团，建筑围绕庭院与公共步行空间展开。', 'A Phase II campus precinct organized around courtyards and pedestrian spaces.'] },
   { id: 'lakeside', osmId: '536044862', name: ['湖畔公园', 'Lakeside Park'], category: ['自然景观', 'Landscape'], icon: 'trees', pin: true, wide: true,
     description: ['校园中央的水岸绿地，步道串联湖岸、林坡和邻近的学生生活区。', 'Waterside paths link the green banks, hillside woods and nearby student quarters.'] },
   { id: 'lychee', osmId: '638398293', name: ['荔园', 'Lychee Hills'], category: ['学生生活', 'Student life'], icon: 'home', pin: true, wide: true,
     description: ['北侧学生生活组团，宿舍沿起伏地形布置，并通过步道与餐饮及教学区相连。', 'Residence blocks in the northern hills connect to dining and academic areas through the pedestrian network.'] },
-  { id: 'yidan', osmId: '710848316', name: ['一丹图书馆', 'Yidan Library'], category: library, icon: 'book',
-    description: ['位于南科大中心组团，设有学习桌和讨论空间。', 'Part of the SUSTech Center precinct, with individual study and discussion spaces.'] },
+  { id: 'yidan', osmId: landmarkFootprints.yidan, name: ['一丹图书馆', 'Yidan Library'], category: library, icon: 'book',
+    dimensions: dimensions(campusReferences.yidan, [landmarkFootprints.yidan]),
+    description: ['位于南科大中心组团，弧形玻璃幕墙外布置暖棕色竖向构件。', 'Part of the SUSTech Center precinct, with warm brown vertical fins along a curved glass façade.'] },
   { id: 'science', osmId: 'r18716462', name: ['理学院', 'College of Science'], category: study, icon: 'building',
     description: ['校园南侧的教学科研建筑，邻近商学院与教学楼。', 'A teaching and research complex in the southern academic precinct, near Business and lecture buildings.'] },
   { id: 'research', osmId: '1506997102', name: ['第三科研楼', 'Research Building 3'], category: study, icon: 'building',
@@ -129,29 +150,31 @@ const landmarkInfo: LandmarkInfo[] = [
     description: ['东部片区的医学教学组团，模型以概略体量表示。', 'The eastern medical teaching precinct is represented by approximate building volumes.'] },
   { id: 'hall', osmId: '736809369', name: ['南科大会堂', 'SUSTech Hall'], category: ['文化设施', 'Culture'], icon: 'building',
     description: ['校园南部的集会和活动空间，靠近一号门与一期教学区。', 'An events venue near Gate 1 and the original academic precinct in the south.'] },
+  { id: 'humanities', osmId: landmarkFootprints.humanities, name: ['人文社会科学学院', 'School of Humanities and Social Sciences'], category: study, icon: 'building', wide: true,
+    description: ['校园二期东侧教学组团。灰砖、坡屋顶和挑檐围合出连续的庭院与步行空间。', 'A Phase II teaching precinct with grey brick, pitched roofs and overhanging eaves around interconnected courtyards.'] },
 ]
 
 function getStyle(building: Footprint): Style {
+  if (building.id === landmarkFootprints.lynn) return 'lynn'
+  if (building.id === landmarkFootprints.yidan) return 'yidan'
+  if (building.id === landmarkFootprints.nexus) return 'nexus'
+  if (building.id === landmarkFootprints.center) return 'center'
+  if (building.id === landmarkFootprints.engineeringSouth || building.id === landmarkFootprints.engineeringNorth) return 'engineering'
   if (building.id === '638398880') return 'gym'
   if (building.name?.includes('图书馆')) return 'library'
   if (building.id === '736809369') return 'hall'
   if (building.type === 'dormitory' || building.type === 'apartments' || /园\d|宿舍|公寓/.test(building.name ?? '')) return 'dorm'
-  if (building.id === 'r12480428' || /人文|学术交流/.test(building.name ?? '')) return 'campus'
+  if (/人文|学术交流/.test(building.name ?? '')) return 'campus'
   return /科研|工学院|学院|实验/.test(building.name ?? '') ? 'research' : 'academic'
 }
 
 function heightOf(building: Footprint) {
+  const profile = buildingsWithPublishedData.get(building.id)
+  const meters = profile?.publishedMeters ?? profile?.estimatedMeters
+  if (meters) return meters / 10
   if (building.id === '638398880') return 2.25
-  if (building.id === '533170974') return 1.48
-  if (building.id === 'r12480428') return 1.72
+  if (building.id === landmarkFootprints.center) return 1.53
   return T.MathUtils.clamp(building.height ? building.height / 10 : (building.levels ?? 4) * .365, .72, 8.5)
-}
-
-function colorize(geometry: T.BufferGeometry, color: T.Color) {
-  const colors = new Float32Array(geometry.getAttribute('position').count * 3)
-  for (let i = 0; i < colors.length; i += 3) color.toArray(colors, i)
-  geometry.setAttribute('color', new T.BufferAttribute(colors, 3))
-  return geometry
 }
 
 function addSurfaceBatch(root: T.Group, geometries: T.BufferGeometry[], material: T.Material) {
@@ -202,12 +225,15 @@ function addCampusBuildings(root: T.Group, footprints: Footprint[]) {
   for (const building of footprints) {
     const ring = building.points
     const [x, z] = centerOf(ring)
-    const floors = Math.max(1, Math.round(heightOf(building) / .37))
+    const height = heightOf(building)
+    const floors = buildingsWithPublishedData.get(building.id)?.floors ?? Math.max(1, Math.round(height / .37))
     const style = getStyle(building)
     const [walls, roof, window, fascia] = styles[style]
+    const curtainWall = style === 'yidan' || style === 'center' || style === 'nexus'
+    const broadWindows = curtainWall || style === 'library' || style === 'lynn'
     const y = Math.max(...ring.map(([a, b]) => ground(a, b)), ground(x, z)) + .045
     const base = Math.min(...ring.map(([a, b]) => ground(a, b))) - .24
-    const top = y + heightOf(building)
+    const top = y + height
     heights.set(building.id, top)
     const facades = shell(ring, base, top, new T.Color(walls).multiplyScalar(.92 + random() * .19))
     batch.push(facades.geometry, colorize(planar(ring, () => top + .013), new T.Color(roof)))
@@ -223,7 +249,7 @@ function addCampusBuildings(root: T.Group, footprints: Footprint[]) {
       const cz = (b + d) / 2
       trim.add(cx, top + .055, cz, length + .08, .14, .15, fascia, angle)
       trim.add(cx, y + .085, cz, length, .14, .14, '#73786e', angle)
-      const bays = Math.max(1, Math.floor(length / (style === 'library' ? .47 : .67)))
+      const bays = Math.max(1, Math.floor(length / (broadWindows ? .43 : .67)))
       const interval = length / bays
       const floorHeight = (top - y) / floors
       for (let floor = 0; floor < floors; floor++) {
@@ -235,13 +261,20 @@ function addCampusBuildings(root: T.Group, footprints: Footprint[]) {
         for (let bay = 0; bay < bays; bay++) {
           const t = (bay + .53) * interval
           const tint = new T.Color(window).multiplyScalar(.73 + random() * .5)
-          glass.add(a + dx * t + dz * .034, py, b + dz * t - dx * .034, interval * (style === 'library' ? .82 : .58), floorHeight * .57, .06, tint, angle)
+          glass.add(a + dx * t + dz * .04, py, b + dz * t - dx * .04,
+            interval * (broadWindows ? .82 : .58), floorHeight * (curtainWall ? .82 : .57), .07, tint, angle)
+          if (style === 'lynn') addLynnFacadeFin(batch, [a, b], [dx, dz], t, py, interval, floorHeight, (floor + bay) % 2 ? 1 : -1)
+          if (floor === 0 && (curtainWall || (style === 'engineering' && bay % 2 === 0))) {
+            const seam = t - interval * .47
+            trim.add(a + dx * seam + dz * .075, y + height / 2, b + dz * seam - dx * .075, .074, height, .15, fascia, angle)
+          }
         }
-        if (style === 'dorm' || style === 'library') trim.add(cx + dz * .09, py - floorHeight * .39, cz - dx * .09, length, .06, .15, fascia, angle)
+        if (style === 'dorm' || broadWindows) trim.add(cx + dz * .09, py - floorHeight * .39, cz - dx * .09, length, .06, .15, fascia, angle)
       }
     }
     const [a, b, c, d] = boundsOf(ring)
-    if (inside(x, z, ring) && c - a > 1.8 && d - b > 1.8) {
+    const customRoof = addLandmarkRoof(building.id, batch, trim, facades.perimeter, top + .013)
+    if (!customRoof && inside(x, z, ring) && c - a > 1.8 && d - b > 1.8) {
       const roofWidth = Math.min(3.2, (c - a) * .26)
       const roofDepth = Math.min(2.6, (d - b) * .24)
       trim.add(x, top + .22, z, roofWidth, .36, roofDepth, fascia)
@@ -402,8 +435,9 @@ export function createCampus(): CampusWorld {
     const footprint = footprints.find(({ id }) => id === info.osmId)
     const [x, z] = info.point ?? (footprint ? centerOf(footprint.points) : places.get(info.osmId)!)
     const y = heights.get(info.osmId) ?? ground(x, z) + .72
+    const labelPosition = footprint ? footprintAnchor(footprint.points) : [x, z]
     const scale = info.wide ? 1.45 : 1
-    return { ...info, anchor: new T.Vector3(x, y + .85, z), focus: { position: [x + 14 * scale, y + 14 * scale, z + 19 * scale], target: [x, y - .45, z] } }
+    return { ...info, anchor: new T.Vector3(labelPosition[0], y + .85, labelPosition[1]), focus: { position: [x + 14 * scale, y + 14 * scale, z + 19 * scale], target: [x, y - .45, z] } }
   })
   const focusMarker = new T.Mesh(new T.RingGeometry(.88, 1.04, 40), new T.MeshBasicMaterial({ color: '#99f5d4', side: T.DoubleSide, transparent: true, opacity: .84, depthWrite: false }))
   focusMarker.rotation.x = -Math.PI / 2

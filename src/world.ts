@@ -12,6 +12,11 @@ export interface CameraPose {
   target: Vec
 }
 
+export interface LandmarkDimensions {
+  source: string
+  buildings: { label?: Localized, floors: number, heightMeters?: number }[]
+}
+
 export interface Landmark {
   id: string
   name: Localized
@@ -20,6 +25,7 @@ export interface Landmark {
   icon: string
   anchor: Vector3
   focus: CameraPose
+  dimensions?: LandmarkDimensions
   pin?: boolean
 }
 

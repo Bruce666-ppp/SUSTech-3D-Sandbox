@@ -22,7 +22,7 @@ const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)')
 const savedQuality = readPreference('quality') as Quality | null
 let quality: Quality = savedQuality && qualityOrder.includes(savedQuality) ? savedQuality : coarsePointer.matches ? 'medium' : 'high'
 let language: Language = readPreference('language') === 'en-US' ? 'en-US' : 'zh-CN'
-let sound = readPreference('sound') !== 'off'
+let sound = AudioEngine.supported && readPreference('sound') !== 'off'
 const audio = new AudioEngine(sound)
 let mode: Mode = 'campus'
 let activeMode: Mode | undefined
@@ -71,6 +71,13 @@ const t = (key: TranslationKey) => translations[language][key]
 const campus = () => activeMode === 'campus' ? world as CampusWorld : undefined
 const sandbox = () => activeMode === 'sandbox' ? world as SandboxWorld : undefined
 
+const fullscreenDocument = document as Document & {
+  webkitFullscreenElement?: Element
+  webkitExitFullscreen?: () => Promise<void> | void
+}
+const fullscreenRoot = document.documentElement as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void }
+const fullscreenActive = () => Boolean(document.fullscreenElement || fullscreenDocument.webkitFullscreenElement)
+
 function accessible(button: HTMLElement, label: string) {
   button.title = label
   button.setAttribute('aria-label', label)
@@ -94,13 +101,14 @@ function showStatus(key?: TranslationKey, error = false) {
 }
 
 function updateActions() {
-  const audioButton = element('sound')
+  const audioButton = element<HTMLButtonElement>('sound')
   audioButton.innerHTML = icon(sound ? 'volume' : 'mute', 17)
   audioButton.setAttribute('aria-pressed', `${sound}`)
-  accessible(audioButton, t(sound ? 'soundOn' : 'soundOff'))
+  audioButton.disabled = !AudioEngine.supported
+  accessible(audioButton, t(!AudioEngine.supported ? 'soundUnavailable' : sound ? 'soundOn' : 'soundOff'))
   const fullButton = element('fullscreen')
-  fullButton.innerHTML = icon(document.fullscreenElement ? 'minimize' : 'fullscreen', 18)
-  accessible(fullButton, t(document.fullscreenElement ? 'exitFullscreen' : 'fullscreen'))
+  fullButton.innerHTML = icon(fullscreenActive() ? 'minimize' : 'fullscreen', 18)
+  accessible(fullButton, t(fullscreenActive() ? 'exitFullscreen' : 'fullscreen'))
   accessible(element('language'), t('language'))
   element('language-short').textContent = language === 'zh-CN' ? 'EN' : '简体'
 }
@@ -159,6 +167,32 @@ function updateLandmark() {
   landmarkInfo.querySelector('h2')!.textContent = translated(picked.name, language)
   landmarkInfo.querySelector('.category')!.textContent = translated(picked.category, language)
   landmarkInfo.querySelector('p')!.textContent = translated(picked.description, language)
+  if (picked.dimensions) {
+    const specs = document.createElement('ul')
+    specs.className = 'landmark-specs'
+    specs.setAttribute('aria-label', t('dimensions'))
+    for (const building of picked.dimensions.buildings) {
+      const row = document.createElement('li')
+      if (building.label) {
+        const label = document.createElement('span')
+        label.textContent = translated(building.label, language)
+        row.append(label)
+      }
+      const value = document.createElement('strong')
+      const height = building.heightMeters?.toLocaleString(language, { maximumFractionDigits: 1 })
+      const floors = `${building.floors.toLocaleString(language)} ${t('floorUnit')}`
+      value.textContent = height ? `${floors} · ${height} ${t('meters')}` : floors
+      row.append(value)
+      specs.append(row)
+    }
+    const source = document.createElement('a')
+    source.className = 'landmark-source'
+    source.href = picked.dimensions.source
+    source.textContent = t('dimensionSource')
+    source.target = '_blank'
+    source.rel = 'noopener noreferrer'
+    landmarkInfo.append(specs, source)
+  }
   const close = element('close-details')
   accessible(close, t('close'))
   close.addEventListener('click', () => clearLandmark())
@@ -414,10 +448,15 @@ element('fullscreen').addEventListener('click', async () => {
   audio.play('click')
   try {
     if (document.fullscreenElement) await document.exitFullscreen()
-    else await document.documentElement.requestFullscreen()
+    else if (fullscreenDocument.webkitFullscreenElement) await fullscreenDocument.webkitExitFullscreen?.()
+    else if (typeof fullscreenRoot.requestFullscreen === 'function' && document.fullscreenEnabled) await fullscreenRoot.requestFullscreen()
+    else if (fullscreenRoot.webkitRequestFullscreen) await fullscreenRoot.webkitRequestFullscreen()
+    else showToast('fullscreenError')
   } catch { showToast('fullscreenError') }
 })
-document.addEventListener('fullscreenchange', () => { updateActions(); resize() })
+function handleFullscreenChange() { updateActions(); resize() }
+document.addEventListener('fullscreenchange', handleFullscreenChange)
+document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
 element('landmark-toggle').addEventListener('click', () => {
   if (!compact.matches) return
   const expanded = element('landmark-panel').classList.toggle('is-open')

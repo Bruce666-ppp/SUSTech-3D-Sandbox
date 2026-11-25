@@ -1,8 +1,10 @@
 import type { Tool } from './world'
 
 type Sound = 'click' | 'select' | 'impact' | 'rebuild' | 'launch' | Tool
+const AudioGraph = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 
 export class AudioEngine {
+  static readonly supported = typeof AudioGraph === 'function'
   private context?: AudioContext
   private output?: GainNode
   private noise?: AudioBuffer
@@ -19,10 +21,10 @@ export class AudioEngine {
   }
 
   unlock() {
-    if (!this.enabled || typeof AudioContext === 'undefined') return
+    if (!this.enabled || !AudioGraph) return
     try {
       if (!this.context) {
-        this.context = new AudioContext()
+        this.context = new AudioGraph()
         this.output = this.context.createGain()
         this.output.gain.value = .32
         const limiter = this.context.createDynamicsCompressor()
