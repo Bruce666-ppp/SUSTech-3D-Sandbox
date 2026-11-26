@@ -1,45 +1,45 @@
 # SUSTech 3D Sandbox
 
-[简体中文](README.zh-CN.md) · [GitHub Pages demo](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [Data and licenses](DATA-SOURCES.md)
+[简体中文](README.zh-CN.md) · [Play on GitHub Pages](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [Scene assets and licenses](DATA-SOURCES.md)
 
-Explore Southern University of Science and Technology as an interactive mountain campus model, then switch to Ember Ridge, a fictional physics arena. Both experiences run entirely in the browser.
+Explore Mistridge Campus, a fictional mountain-campus miniature with lakeside paths, a running track, wooded ridges and 16 modular buildings. Pick a tool in the bottom dock and click or tap the scene. The tool appears in the air and follows a short animation to the marked spot before the impact begins.
 
-![Campus Explorer with geospatial terrain, rooftop detail and landmark labels](docs/screenshots/campus.png)
+![Mistridge Campus with the three drop tools in the bottom dock](docs/screenshots/mistridge-campus.png)
 
-## What you can do
+| Key | Tool | Cooldown | Effect |
+| --- | --- | --- | --- |
+| `1` | Impact Orb ★ | 1 s | Tumbling amber sphere, sparks and a short dust ring |
+| `2` | Energy Pod ★★★ | 5 s | Braking cyan capsule, a vertical flare and hexagonal waves |
+| `3` | Mega Core ★★★★★ | 15 s | Purple core with rotating bands, layered waves and a longer dust plume |
 
-- **Campus Explorer.** Orbit the full campus, zoom in on façades or switch to a top-down view. Select a map pin or one of 15 landmarks to see its bilingual description and fly to it. The engineering buildings and three libraries show published dimensions or storey counts with links to their sources. The scene combines 113 OpenStreetMap building outlines with a Copernicus GLO-30 elevation surface. Roads, lakes, hillside vegetation and sports facilities give context to the academic and residential districts.
-- **Physics Sandbox.** Choose Grenade, Missile or Nuke with the toolbar or keys `1`, `2`, `3`. Click the fictional scene to trigger the effect. Each tool has its own cooldown of 1, 5 or 15 seconds. Modular structures break into colliding rigid bodies with layered light, particles, audio and persistent rubble. Rebuild restores the arena and clears its transient simulation state while preserving live cooldown timers.
-- **Display and accessibility.** Switch languages or quality while a scene is running. The interface remembers your language, sound and quality preferences. Touch gestures work alongside mouse controls.
-
-![Ember Ridge during a physics effect with falling debris, light and smoke](docs/screenshots/sandbox-burst.png)
+Buildings separate into colliding sections that retain their windows and roof details. Rubble and terrain marks persist after particles fade. **Rebuild** restores the buildings, terrain and cooldowns, and cancels active drops. **Reset camera** returns to the opening view.
 
 | Input | Action |
 | --- | --- |
 | Left drag or one finger | Orbit |
 | Mouse wheel or pinch | Zoom |
 | Right drag or two-finger drag | Pan |
-| Campus map pin or landmark list | Inspect a landmark |
-| Sandbox tap or click | Use the selected tool |
-| `1`, `2`, `3` | Select a sandbox tool |
+| Click or tap the scene | Drop the selected tool |
+
+The top bar switches between Simplified Chinese and English, toggles sound, sets render quality and opens fullscreen where supported. Language, quality and sound settings are saved locally.
+
+[Airborne Mega Core](docs/screenshots/mistridge-drop.png) · [Buildings in motion](docs/screenshots/mistridge-collapse.png) · [Persistent terrain mark](docs/screenshots/mistridge-terrain.png)
 
 ## Run locally
 
-Use Node.js 22.12 or newer and a WebGL 2 browser. The GitHub Actions workflow uses Node.js 24.
+Use Node.js 22.12 or newer and a WebGL 2 browser. GitHub Actions uses Node.js 24.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-For a production build and local preview, run the following commands.
-
 ```sh
 npm run build
 npm run preview
 ```
 
-To run browser acceptance tests against the production files under `/SUSTech-3D-Sandbox/`, run the following commands. Set `SUSTECH_CHROME_PATH` to use an already installed Chrome binary. Set `SUSTECH_SOFTWARE_GL=1` for the Chromium SwiftShader test configuration.
+The browser tests serve the production files under `/SUSTech-3D-Sandbox/` and exercise desktop input and simulated mobile touch. Set `SUSTECH_CHROME_PATH` to use an installed Chrome binary. Set `SUSTECH_SOFTWARE_GL=1` to use Chromium SwiftShader.
 
 ```sh
 npx playwright install chromium webkit
@@ -49,10 +49,6 @@ npm run test:browser -- webkit
 
 ## Architecture and deployment
 
-Vite builds a static TypeScript app. Three.js shares a renderer and camera controller across two lazily loaded scenes. `src/campus.ts` builds the terrain, vector geometry, architecture and landmark metadata. `src/sandbox.ts` owns the Rapier world and its fixed-step simulation. `src/effects.ts` manages reusable particle and effect buffers, while `src/audio.ts` synthesizes sound with Web Audio. `src/i18n.ts` contains the interface dictionary and preference helpers. Exiting a scene releases its resources. The rendering presets set resolution, shadows and visual effect density, and sustained slow frames reduce the pixel ratio.
+Vite builds a static TypeScript app. Three.js renders the locally modeled terrain and instanced buildings. Rapier runs the fixed-step rigid-body simulation in `src/playground.ts`. `src/descent.ts`, `src/effects.ts` and `src/audio.ts` coordinate the drop sequence, reusable visual effects and synthesized audio. `src/landscape.ts` creates terrain marks from preset shapes. Quality presets control resolution, shadows and effect density.
 
-The Pages workflow builds `dist/` on `main` and deploys it with GitHub Actions. In the repository's **Settings → Pages**, the publishing source is **GitHub Actions**. Vite uses a relative base so the same files work under the repository subpath or a static server root. The demo link is available after the first successful deployment.
-
-[Engineering close-up](docs/screenshots/campus-detail.png) · [Lynn Library's triangular skylights](docs/screenshots/lynn-library.png) · [School of Humanities and Social Sciences](docs/screenshots/humanities.png) · [Fictional terrain and structures](docs/screenshots/sandbox.png)
-
-The campus is a reference-based visualization. Height estimates, architectural detail, terrain grading and the medical precinct are documented in [Data and licenses](DATA-SOURCES.md). The MIT license applies to original project code. OpenStreetMap and Copernicus data retain their source licenses.
+The existing Pages workflow builds and deploys `dist/` from `main`. Under **Settings → Pages**, the publishing source is **GitHub Actions**. Vite uses relative asset paths for both the repository subpath and a static server root.

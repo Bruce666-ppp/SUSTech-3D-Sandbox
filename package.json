@@ -11,7 +11,6 @@
     "check": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "data:campus": "node scripts/build-campus-data.mjs",
     "test:browser": "node scripts/browser-test.mjs"
   },
   "dependencies": {
@@ -20,8 +19,6 @@
   },
   "devDependencies": {
     "@types/three": "0.187.0",
-    "fast-xml-parser": "5.12.1",
-    "geotiff": "3.0.5",
     "playwright": "1.65.1",
     "typescript": "7.0.2",
     "vite": "8.3.8"

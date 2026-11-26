@@ -1,6 +1,6 @@
 import type { Tool } from './world'
 
-type Sound = 'click' | 'select' | 'impact' | 'rebuild' | 'launch' | Tool
+type Sound = 'click' | 'select' | 'impact' | 'rebuild' | `drop-${Tool}` | Tool
 const AudioGraph = window.AudioContext ?? (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 
 export class AudioEngine {
@@ -9,6 +9,7 @@ export class AudioEngine {
   private output?: GainNode
   private noise?: AudioBuffer
   private enabled: boolean
+  private readonly active = new Set<AudioScheduledSourceNode>()
 
   constructor(enabled: boolean) {
     this.enabled = enabled
@@ -52,6 +53,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(volume, start + .014)
     gain.gain.exponentialRampToValueAtTime(.0001, start + duration)
     oscillator.connect(gain).connect(this.output!)
+    this.track(oscillator)
     oscillator.start(start)
     oscillator.stop(start + duration + .02)
   }
@@ -70,6 +72,7 @@ export class AudioEngine {
     gain.gain.exponentialRampToValueAtTime(volume, start + .018)
     gain.gain.exponentialRampToValueAtTime(.0001, start + duration)
     source.connect(filter).connect(gain).connect(this.output!)
+    this.track(source)
     source.start(start, Math.random() * .25)
     source.stop(start + duration + .025)
   }
@@ -79,21 +82,34 @@ export class AudioEngine {
     switch (sound) {
       case 'click': this.tone(480, 315, .09, .11, 'triangle'); break
       case 'select': this.tone(435, 680, .11, .13, 'triangle'); break
-      case 'launch': this.burst(380, 1900, .49, .12); break
-      case 'grenade':
-        this.burst(3500, 160, .35, .66)
-        this.tone(120, 45, .35, .39)
+      case 'drop-orb':
+        this.tone(890, 168, .68, .085, 'triangle')
+        this.burst(470, 3200, .57, .10, .12)
         break
-      case 'missile':
-        this.burst(4400, 71, .94, .85)
-        this.tone(98, 31, .86, .67)
-        this.burst(580, 110, .75, .24, .21)
+      case 'drop-pod':
+        this.tone(382, 690, .31, .13, 'triangle')
+        this.tone(721, 302, .53, .13, 'sine', .38)
+        this.burst(980, 175, .37, .14, .63)
         break
-      case 'nuke':
-        this.burst(1900, 43, 2.4, .87)
-        this.tone(78, 29, 2.35, .84)
-        this.tone(46, 25, 2.1, .43, 'triangle', .14)
-        this.burst(790, 70, 1.7, .38, .39)
+      case 'drop-core':
+        this.tone(96, 194, .95, .20, 'sine')
+        this.tone(158, 252, .81, .12, 'triangle', .26)
+        this.burst(580, 3250, .69, .18, .71)
+        break
+      case 'orb':
+        this.burst(3500, 240, .34, .56)
+        this.tone(146, 56, .3, .41)
+        break
+      case 'pod':
+        this.burst(3650, 116, .71, .67)
+        this.tone(223, 66, .69, .47, 'triangle')
+        this.tone(404, 149, .5, .19, 'sine', .12)
+        break
+      case 'core':
+        this.burst(1600, 52, 2.07, .73)
+        this.tone(84, 31, 1.78, .72)
+        this.tone(169, 42, 1.31, .35, 'triangle', .15)
+        this.burst(770, 90, 1.44, .34, .31)
         break
       case 'impact':
         this.burst(650 + 770 * strength, 120, .22, .075 + strength * .11)
@@ -107,7 +123,18 @@ export class AudioEngine {
     }
   }
 
+  private track(source: AudioScheduledSourceNode) {
+    this.active.add(source)
+    source.addEventListener('ended', () => this.active.delete(source), { once: true })
+  }
+
+  clear() {
+    for (const source of this.active) source.stop()
+    this.active.clear()
+  }
+
   dispose() {
+    this.clear()
     if (this.context?.state !== 'closed') void this.context?.close().catch(() => {})
   }
 }

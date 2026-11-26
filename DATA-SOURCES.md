@@ -1,32 +1,7 @@
-# Campus data and permissions
+# Scene assets and licenses
 
-The scene covers the campus and its immediate terrain in Shenzhen, from 113.9882° E to 114.0072° E and 22.5934° N to 22.61345° N.
+Mistridge Campus is an original fictional mountain-campus layout. The topography, paths, water, vegetation, building positions and dimensions use authored local scene coordinates. Campus-inspired roof profiles, façade rhythms and courtyards are represented with procedural geometry. The app generates the terrain, crack texture, tool models, visual effects and audio locally.
 
-| Source | Use and permission |
-| --- | --- |
-| [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) | Campus outline, mapped building footprints and levels, named places, roads, trails, waterways, parks and sports surfaces. `src/data/osm-campus.json` is an adapted database under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). The scene displays attribution. The extract omits mapper account metadata and unrelated tags. |
-| [Copernicus GLO-30](https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM) | Elevation surface from the public 30 m COG tiles hosted in the [AWS Open Data Registry](https://registry.opendata.aws/copernicus-dem/), tile IDs `N22_00_E113_00` and `N22_00_E114_00`. The adapted grid in `src/data/elevation.json` remains subject to the [GLO-30 free and open license](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/DEM/resources/license/License-COPDEM-30.pdf). See the [attribution notice](public/data-notices.txt). |
-| [SUSTech campus map](https://www.sustech.edu.cn/uploads/files/2024/05/27151839_42755.pdf), [General Affairs Office](https://gao.sustech.edu.cn/campus.html?lang=zh-cn), [University Library](https://lib.sustech.edu.cn/) | Reference for names, building functions, landscape and campus districts. The campus diagram, university photos, logo and text are outside the distributed assets. |
-| [SUSTech College of Engineering opening](https://aa.sustech.edu.cn/news/detail/27.html) | Published above-ground storeys and heights. The south building has 9 storeys and is 42.3 m high. The north building has 10 storeys and is 46.8 m high. |
-| [Lynn Library building tour](https://www.szdesigncenter.com/01), [Yidan Library opening](https://www.sustech.edu.cn/10th/news/39486.html), [SUSTech library spaces](https://lib.sustech.edu.cn/_upload/article/files/92/4e/491216e745daacdf9126b03f1390/ef2b6781-d204-4018-b72d-0fc8d6fdd50c.pdf) | Storey counts for Lynn Library, Yidan Library and Learning Nexus, along with architectural references for Lynn's eight triangular skylights and Yidan's glazed façade. |
-| [Architecturestudio Phase II project description](https://www.gooood.cn/en/south-university-of-science-and-technology-campus-phase-ii-project-architecturestudio.htm) | Visual reference for courtyard organization, roof profiles and the rhythm of the façades. The architecture photographs and drawings are outside the distributed assets. |
+Buildings use predefined visual sections and game-tuned rigid bodies. Terrain depressions and surface marks use decorative presets. The same terrain collider is retained throughout play.
 
-## How the scene was built
-
-The extraction script projects the vector features into local east–south display coordinates. It samples the DEM on a 76 × 84 grid, spanning 22.6–145.5 m over the display area. Rendering interpolates that surface and applies a 1.32× vertical scale. The DEM is a digital **surface** model, so it can include canopy and roof elevations. Water and sports surfaces receive local visual grading. The basemap and elevation grid are bundled, which keeps runtime exploration independent of map services.
-
-The scene includes 113 mapped building outlines and 15 bilingual landmarks. The engineering buildings use the published heights. The library models use published storey counts with estimated overall heights. OpenStreetMap height or level tags inform the remaining volumes where available. `src/campus-architecture.ts` applies reference-based details to selected landmarks, including the Lynn skylights, the SUSTech Center terraces and the grey pitched roofs and eaves at the School of Humanities and Social Sciences. Their positions and dimensions are approximate. The other heights, School of Medicine volumes, planting and sporting structures also use architectural approximations. Large complex footprints and water multipolygons are simplified. The view is intended for campus orientation and demonstration, with location and dimensions appropriate to that use. It omits building interiors, survey-grade coordinates and live construction updates.
-
-The fictional arena has an original layout and its own terrain, structures, materials and effects. Web Audio synthesizes every sound. The MIT license applies to original code and assets. Third-party packages and geographic data retain their respective licenses.
-
-## Regenerate the local data
-
-The checked-in JSON files are ready to use. To update them, download the same region and tiles, then run the extraction script with those three files.
-
-- OSM extract. [XML bounding-box export](https://api.openstreetmap.org/api/0.6/map?bbox=113.980,22.591,114.010,22.617)
-- Copernicus western tile. [E113 COG](https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N22_00_E113_00_DEM/Copernicus_DSM_COG_10_N22_00_E113_00_DEM.tif)
-- Copernicus eastern tile. [E114 COG](https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N22_00_E114_00_DEM/Copernicus_DSM_COG_10_N22_00_E114_00_DEM.tif)
-
-```sh
-npm run data:campus -- path/to/campus.osm path/to/E113.tif path/to/E114.tif
-```
+The original project code and assets are available under the [MIT license](LICENSE). Runtime library notices are included for [Three.js](public/licenses/three.txt) and [Rapier](public/licenses/rapier.txt).
