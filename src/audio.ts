@@ -82,11 +82,11 @@ export class AudioEngine {
     switch (sound) {
       case 'click': this.tone(480, 315, .09, .11, 'triangle'); break
       case 'select': this.tone(435, 680, .11, .13, 'triangle'); break
-      case 'drop-orb':
-        this.tone(890, 168, .68, .085, 'triangle')
-        this.burst(470, 3200, .57, .10, .12)
+      case 'drop-canister':
+        this.tone(680, 226, .69, .073, 'triangle')
+        this.burst(980, 3550, .46, .12, .31)
         break
-      case 'drop-pod':
+      case 'drop-crate':
         this.tone(382, 690, .31, .13, 'triangle')
         this.tone(721, 302, .53, .13, 'sine', .38)
         this.burst(980, 175, .37, .14, .63)
@@ -96,20 +96,22 @@ export class AudioEngine {
         this.tone(158, 252, .81, .12, 'triangle', .26)
         this.burst(580, 3250, .69, .18, .71)
         break
-      case 'orb':
-        this.burst(3500, 240, .34, .56)
-        this.tone(146, 56, .3, .41)
+      case 'canister':
+        this.burst(4110, 320, .27, .61)
+        this.tone(158, 52, .28, .42)
+        this.burst(1800, 275, .24, .17, .16)
         break
-      case 'pod':
-        this.burst(3650, 116, .71, .67)
-        this.tone(223, 66, .69, .47, 'triangle')
-        this.tone(404, 149, .5, .19, 'sine', .12)
+      case 'crate':
+        this.burst(3900, 158, .52, .61)
+        this.tone(287, 91, .62, .41, 'triangle')
+        this.tone(440, 157, .46, .18, 'sine', .105)
+        this.burst(2600, 285, .47, .26, .22)
         break
       case 'core':
-        this.burst(1600, 52, 2.07, .73)
-        this.tone(84, 31, 1.78, .72)
-        this.tone(169, 42, 1.31, .35, 'triangle', .15)
-        this.burst(770, 90, 1.44, .34, .31)
+        this.burst(2400, 52, 2.11, .73)
+        this.tone(92, 35, 1.84, .71)
+        this.tone(141, 42, 1.37, .37, 'triangle', .23)
+        this.burst(1140, 90, 1.53, .39, .36)
         break
       case 'impact':
         this.burst(650 + 770 * strength, 120, .22, .075 + strength * .11)

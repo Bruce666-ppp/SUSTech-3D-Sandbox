@@ -3,15 +3,15 @@ import RAPIER from '@dimforge/rapier3d-compat'
 import type { AudioEngine } from './audio'
 import { Descent } from './descent'
 import { Effects } from './effects'
-import { createLandscape, ground, isWater } from './landscape'
+import { createLandscape, ground, landscapeBounds } from './landscape'
 import { disposeScene, randomSource } from './model'
-import { buildingPlots, createStructures, type Module, type Structure } from './structures'
+import { createStructures, type Module, type Structure } from './structures'
 import { tools, type Playground, type Tool } from './world'
 
 const timing = {
-  orb: { reach: 5.4, separation: .125, drift: 5.5 },
-  pod: { reach: 13.6, separation: .12, drift: 8.6 },
-  core: { reach: 24.0, separation: .16, drift: 15.4 },
+  canister: { reach: 4.6, separation: .12, drift: 4.8 },
+  crate: { reach: 12.5, separation: .16, drift: 8.5 },
+  core: { reach: 23.8, separation: .20, drift: 13.5 },
 }
 
 type Release = { structure: Structure, module: Module, tool: Tool, impact: T.Vector3, time: number }
@@ -23,13 +23,13 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
   await initialized
 
   const root = new T.Group()
-  const land = createLandscape(root, buildingPlots)
+  const land = createLandscape(root)
   const buildings = createStructures(root)
   const effects = new Effects((x, z) => ground(x, z) + land.deformation(x, z))
   const descent = new Descent()
   root.add(effects.root, descent.root)
   const marker = new T.Group()
-  const reticleMaterial = new T.MeshBasicMaterial({ color: tools.orb.color, transparent: true, side: T.DoubleSide, depthWrite: false, toneMapped: false })
+  const reticleMaterial = new T.MeshBasicMaterial({ color: tools.canister.color, transparent: true, side: T.DoubleSide, depthWrite: false, toneMapped: false })
   const outer = new T.Mesh(new T.RingGeometry(.91, 1, 52), reticleMaterial)
   const inner = new T.Mesh(new T.RingGeometry(.19, .26, 20), reticleMaterial)
   outer.rotation.x = inner.rotation.x = -Math.PI / 2
@@ -68,7 +68,7 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
     world = new RAPIER.World({ x: 0, y: -18.6, z: 0 })
     world.timestep = 1 / 60
     world.createCollider(RAPIER.ColliderDesc.trimesh(landVertices, landIndices).setFriction(.93))
-    world.createCollider(RAPIER.ColliderDesc.cuboid(96, .4, 86).setTranslation(0, -5.15, 0).setFriction(.87))
+    world.createCollider(RAPIER.ColliderDesc.cuboid(86, .4, 68).setTranslation(0, -4.13, 0).setFriction(.87))
     for (const structure of buildings.structures) {
       const { base, bottom, plan } = structure
       const support = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(plan.x, (base + bottom) * .5, plan.z)
@@ -92,16 +92,23 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
       const { x, z, w, d } = structure.plan
       const edge = Math.hypot(Math.max(0, Math.abs(x - impact.x) - w * .43), Math.max(0, Math.abs(z - impact.z) - d * .43))
       if (edge > profile.reach) continue
-      for (const module of structure.modules) {
-        if (module.state !== 'fixed') continue
-        const top = structure.plan.floors.length - 1
-        const order = tool === 'core' ? module.tier : tool === 'pod' ? Math.abs(module.tier - 1) : top - module.tier
-        const local = Math.hypot(impact.x - module.position.x, impact.z - module.position.z)
-        const time = elapsed + .07 + order * profile.separation + edge * .012 + local * .009 + rng() * .045
+      const top = structure.plan.floors.length - 1
+      const whole = tool === 'core' || (tool === 'crate' && edge < profile.reach * .71)
+      const fixed = structure.modules.filter(({ state, tier }) => state === 'fixed' && (whole || tier === top))
+      const distance = (module: Module) => Math.hypot(impact.x - module.position.x, impact.z - module.position.z)
+      const set = whole ? fixed : fixed.sort((a, b) => distance(a) - distance(b)).slice(0, tool === 'canister' ? 2 : 3)
+      if (!set.length) continue
+      structure.collapse ||= whole
+      if (structure.stage === 'intact') structure.stage = 'damaged'
+      for (const module of set) {
+        const order = tool === 'core' ? module.tier : tool === 'crate' ? Math.abs(module.tier - 1) : top - module.tier
+        const time = elapsed + .20 + order * profile.separation + edge * .013 + distance(module) * .008 + rng() * .060
+        buildings.scorch(module)
         module.state = 'scheduled'
         releases.push({ structure, module, impact, tool, time })
       }
     }
+    buildings.upload()
   }
 
   function release(item: Release) {
@@ -115,12 +122,15 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
     direction.normalize()
     const profile = timing[tool]
     const drift = profile.drift * (.76 + rng() * .35) * (1 - .43 * Math.min(distance / (profile.reach + 4), 1))
-    const lift = tool === 'pod' ? 4.2 + rng() * 3.6 : tool === 'orb' ? 1.1 + rng() * 2.3 : 2.7 + 1.46 * module.tier + rng() * 4.0
-    const lean = (tool === 'core' ? 2.94 : tool === 'pod' ? 1.83 : 1.55) + rng() * 1.28
+    const lift = tool === 'crate' ? 4.2 + rng() * 3.6 : tool === 'canister' ? 1.1 + rng() * 2.3 : 2.7 + 1.46 * module.tier + rng() * 4.0
+    const lean = (tool === 'core' ? 2.94 : tool === 'crate' ? 1.83 : 1.55) + rng() * 1.28
     body.setBodyType(RAPIER.RigidBodyType.Dynamic, true)
     body.setLinvel({ x: direction.x * drift, y: lift, z: direction.z * drift }, true)
-    body.setAngvel({ x: direction.z * lean, y: (rng() - .5) * (tool === 'pod' ? 2.8 : 1.16), z: -direction.x * lean }, true)
-    structure.disturbed = true
+    body.setAngvel({ x: direction.z * lean, y: (rng() - .5) * (tool === 'crate' ? 2.8 : 1.16), z: -direction.x * lean }, true)
+    if (structure.collapse) {
+      structure.stage = 'collapsing'
+      structure.settleAfter = elapsed + 2.25
+    }
     module.state = 'moving'
     released.add(module)
     moving++
@@ -194,15 +204,19 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
   root.updateMatrixWorld(true)
   const center = buildings.structures[0].modules.at(-2)!
   const structureTarget = center.position.clone().add(new T.Vector3(0, center.size.y * .35, 0))
-  const terrainTarget = new T.Vector3(-14, ground(-14, 8), 8)
+  const terrainTarget = new T.Vector3(3, ground(3, 20), 20)
 
   return {
-    root, home: { position: [79, 94, 126], target: [-2, 2.65, -.5] }, minDistance: 11, maxDistance: 290,
+    root, home: { position: [64, 76, 116], target: [-2, 1.55, -1] }, minDistance: 10, maxDistance: 248,
     update(dt, pointScale) {
       elapsed += dt
       descent.update(dt, impact, (tool, point) => effects.trail(tool, point))
       terrainMoved = land.update(dt)
       physicsMoved = updatePhysics(dt)
+      for (const structure of buildings.structures) {
+        if (structure.stage === 'collapsing' && elapsed >= structure.settleAfter
+            && !structure.modules.some(({ state }) => state === 'scheduled')) structure.stage = 'ruined'
+      }
       return effects.update(dt, pointScale)
     },
     setQuality(value) { land.setQuality(value); effects.setQuality(value) },
@@ -211,23 +225,22 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
       if (!raycaster) return undefined
       const { origin, direction } = raycaster.ray
       const found = world.castRay(new RAPIER.Ray(origin, direction), 760, true)
-      const water = raycaster.intersectObject(land.lake, false)[0]
-      if (!found && !water) return undefined
-      if (water && (!found || water.distance < found.timeOfImpact)) hitPoint.copy(water.point)
-      else raycaster.ray.at(found!.timeOfImpact, hitPoint)
-      if (Math.abs(hitPoint.x) > 72 || Math.abs(hitPoint.z) > 62) return undefined
+      if (!found) return undefined
+      raycaster.ray.at(found.timeOfImpact, hitPoint)
+      const [minX, minZ, maxX, maxZ] = landscapeBounds
+      if (hitPoint.x < minX || hitPoint.x > maxX || hitPoint.z < minZ || hitPoint.z > maxZ) return undefined
       const y = ground(hitPoint.x, hitPoint.z)
-      if (!isWater(hitPoint.x, hitPoint.z) && Math.abs(hitPoint.y - y) < .27) hitPoint.y += land.deformation(hitPoint.x, hitPoint.z)
+      if (Math.abs(hitPoint.y - y) < .27) hitPoint.y += land.deformation(hitPoint.x, hitPoint.z)
       marker.visible = true
       marker.position.set(hitPoint.x, hitPoint.y + .19, hitPoint.z)
       reticleMaterial.color.set(available ? tools[tool].color : '#a9b8b8')
       reticleMaterial.opacity = available ? .91 : .43
-      outer.scale.setScalar(tool === 'orb' ? 1.21 : tool === 'pod' ? 1.62 : 2.17)
+      outer.scale.setScalar(tool === 'canister' ? 1.21 : tool === 'crate' ? 1.62 : 2.17)
       return hitPoint
     },
     drop(tool, point, camera) {
       const accepted = descent.launch(tool, point, camera)
-      if (accepted) audio.play(tool === 'orb' ? 'drop-orb' : tool === 'pod' ? 'drop-pod' : 'drop-core')
+      if (accepted) audio.play(tool === 'canister' ? 'drop-canister' : tool === 'crate' ? 'drop-crate' : 'drop-core')
       return accepted
     },
     rebuild() {
@@ -247,7 +260,10 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
     },
     shadowsMoving: () => terrainMoved || physicsMoved,
     stats: () => ({
-      intact: buildings.structures.filter((structure) => !structure.disturbed).length,
+      intact: buildings.structures.filter(({ stage }) => stage === 'intact').length,
+      damaged: buildings.structures.filter(({ stage }) => stage === 'damaged').length,
+      collapsing: buildings.structures.filter(({ stage }) => stage === 'collapsing').length,
+      ruined: buildings.structures.filter(({ stage }) => stage === 'ruined').length,
       total: buildings.structures.length, fragments, moving, collisions,
       scars: land.scars, particles: effects.count, impacts, pending: descent.count,
     }),

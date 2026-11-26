@@ -1,33 +1,44 @@
 # SUSTech 3D Sandbox
 
-[简体中文](README.zh-CN.md) · [Play on GitHub Pages](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [Scene assets and licenses](DATA-SOURCES.md)
+[简体中文](README.zh-CN.md) · [Campus Explorer](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [Effects Sandbox](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/#sandbox) · [Data and licenses](DATA-SOURCES.md)
 
-Explore Mistridge Campus, a fictional mountain-campus miniature with lakeside paths, a running track, wooded ridges and 16 modular buildings. Pick a tool in the bottom dock and click or tap the scene. The tool appears in the air and follows a short animation to the marked spot before the impact begins.
+## Campus Explorer
 
-![Mistridge Campus with the three drop tools in the bottom dock](docs/screenshots/mistridge-campus.png)
+The opening scene is a stylized model of Southern University of Science and Technology in Shenzhen. OpenStreetMap provides the site plan, and Copernicus GLO-30 provides the underlying terrain. It includes 113 mapped building outlines, the road and path network, water, sports grounds and 15 bilingual landmarks. Select a landmark to move the camera closer and view its name, description and available published dimensions.
 
-| Key | Tool | Cooldown | Effect |
+![The SUSTech campus with mapped water, buildings, roads, terrain and landmarks](docs/screenshots/sustech-campus.png)
+
+Selected buildings have recognizable exterior details, including Lynn Library’s triangular skylights and lattice, the Engineering buildings’ courtyards, Yidan Library’s glass frontage and the Humanities precinct’s pitched roofs. Exterior details and many heights are visual approximations. The source notes document the data coverage and terrain grading. [Lynn Library close-up](docs/screenshots/sustech-lynn-library.png) · [Data and model notes](DATA-SOURCES.md)
+
+## Effects Sandbox
+
+The Backlot is a separate fictional film set with its own terrain and 12 modular sets. Open **Effects Sandbox** in the top bar, select a prop, then click or tap the backlot. The prop descends before the flash, dust, shockwaves and staged rigid-body animation begin.
+
+| Key | Prop | Cooldown | Screen effect |
 | --- | --- | --- | --- |
-| `1` | Impact Orb ★ | 1 s | Tumbling amber sphere, sparks and a short dust ring |
-| `2` | Energy Pod ★★★ | 5 s | Braking cyan capsule, a vertical flare and hexagonal waves |
-| `3` | Mega Core ★★★★★ | 15 s | Purple core with rotating bands, layered waves and a longer dust plume |
+| `1` | Flash Canister | 1 s | Amber sparks and localized façade damage |
+| `2` | Pyro Crate | 5 s | Cyan flare, square shockwaves and rising smoke |
+| `3` | Firecloud Core | 15 s | Layered flashes, warm fire and a dark smoke column |
 
-Buildings separate into colliding sections that retain their windows and roof details. Rubble and terrain marks persist after particles fade. **Rebuild** restores the buildings, terrain and cooldowns, and cancels active drops. **Reset camera** returns to the opening view.
+The scenery shows intact, damaged, collapsing and ruined states. Rubble and ground marks persist as smoke clears. **Rebuild** restores the set and clears active drops and cooldowns. [Backlot overview](docs/screenshots/film-backlot.png) · [Backlot ruins](docs/screenshots/film-backlot-ruins.png)
+
+![Layered effects and tumbling scenery in the fictional backlot](docs/screenshots/film-backlot-collapse.png)
+
+## Controls
 
 | Input | Action |
 | --- | --- |
 | Left drag or one finger | Orbit |
 | Mouse wheel or pinch | Zoom |
 | Right drag or two-finger drag | Pan |
-| Click or tap the scene | Drop the selected tool |
+| Landmark button or map pin | Inspect a campus landmark |
+| Click or tap the backlot | Drop the selected cinematic prop |
 
-The top bar switches between Simplified Chinese and English, toggles sound, sets render quality and opens fullscreen where supported. Language, quality and sound settings are saved locally.
+The top bar switches scene, language and graphics quality, toggles sound and opens fullscreen where available. The lower-right controls reset the camera, open a campus overhead view or rebuild the backlot. Preferences are saved locally.
 
-[Airborne Mega Core](docs/screenshots/mistridge-drop.png) · [Buildings in motion](docs/screenshots/mistridge-collapse.png) · [Persistent terrain mark](docs/screenshots/mistridge-terrain.png)
+## Run and verify
 
-## Run locally
-
-Use Node.js 22.12 or newer and a WebGL 2 browser. GitHub Actions uses Node.js 24.
+Use Node.js 22.12 or newer and a WebGL 2 browser. The Pages workflow uses Node.js 24.
 
 ```sh
 npm ci
@@ -39,7 +50,7 @@ npm run build
 npm run preview
 ```
 
-The browser tests serve the production files under `/SUSTech-3D-Sandbox/` and exercise desktop input and simulated mobile touch. Set `SUSTECH_CHROME_PATH` to use an installed Chrome binary. Set `SUSTECH_SOFTWARE_GL=1` to use Chromium SwiftShader.
+The browser tests serve the production build under `/SUSTech-3D-Sandbox/`. They exercise both scene entry points, the effects sequence and simulated mobile touch. Set `SUSTECH_CHROME_PATH` to run an installed Chrome binary. Set `SUSTECH_SOFTWARE_GL=1` to run the Chromium test with SwiftShader.
 
 ```sh
 npx playwright install chromium webkit
@@ -47,8 +58,4 @@ npm run test:browser
 npm run test:browser -- webkit
 ```
 
-## Architecture and deployment
-
-Vite builds a static TypeScript app. Three.js renders the locally modeled terrain and instanced buildings. Rapier runs the fixed-step rigid-body simulation in `src/playground.ts`. `src/descent.ts`, `src/effects.ts` and `src/audio.ts` coordinate the drop sequence, reusable visual effects and synthesized audio. `src/landscape.ts` creates terrain marks from preset shapes. Quality presets control resolution, shadows and effect density.
-
-The existing Pages workflow builds and deploys `dist/` from `main`. Under **Settings → Pages**, the publishing source is **GitHub Actions**. Vite uses relative asset paths for both the repository subpath and a static server root.
+Three.js and OrbitControls are shared. Campus geometry and the backlot’s Rapier world load in distinct chunks. The existing GitHub Actions workflow builds and deploys `dist/` from `main`, with relative URLs for Pages.

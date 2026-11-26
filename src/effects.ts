@@ -23,7 +23,8 @@ class ParticleLayer {
   private readonly sizes: T.BufferAttribute
   private readonly alphas: T.BufferAttribute
 
-  constructor(private capacity: number, hot: boolean) {
+  constructor(private capacity: number, style: 'spark' | 'smoke' | 'flame') {
+    const glowing = style !== 'smoke'
     const geometry = new T.BufferGeometry()
     this.positions = new T.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(T.DynamicDrawUsage)
     this.colors = new T.BufferAttribute(new Float32Array(capacity * 3), 3).setUsage(T.DynamicDrawUsage)
@@ -32,8 +33,8 @@ class ParticleLayer {
     geometry.setAttribute('position', this.positions).setAttribute('tint', this.colors).setAttribute('size', this.sizes).setAttribute('alpha', this.alphas)
     geometry.setDrawRange(0, 0)
     const material = new T.ShaderMaterial({
-      transparent: true, depthWrite: false, blending: hot ? T.AdditiveBlending : T.NormalBlending,
-      uniforms: { hot: { value: hot ? 1 : 0 }, pointScale: { value: 460 } },
+      transparent: true, depthWrite: false, blending: glowing ? T.AdditiveBlending : T.NormalBlending,
+      uniforms: { hot: { value: glowing ? 1 : 0 }, flame: { value: style === 'flame' ? 1 : 0 }, pointScale: { value: 460 } },
       vertexShader: `
         attribute vec3 tint;
         attribute float size;
@@ -53,16 +54,19 @@ class ParticleLayer {
       `,
       fragmentShader: `
         uniform float hot;
+        uniform float flame;
         varying vec3 vTint;
         varying float vAlpha;
         varying float vSeed;
         void main() {
           vec2 q = gl_PointCoord * 2.0 - 1.0;
           float r = length(q);
-          float turbulence = .09 * sin(q.x * 5.5 + q.y * 3.2 + vSeed * 14.0) + .045 * cos(q.y * 8.9 - q.x * 5.2 - vSeed * 7.0);
-          float soft = 1.0 - smoothstep(.18, .99, r + turbulence * (1.0 - hot));
-          float core = 1.0 - smoothstep(0.0, .43, r);
-          gl_FragColor = vec4(vTint * (.78 + core * mix(.18, .88, hot)), soft * soft * vAlpha);
+          float turbulence = .12 * sin(q.x * 5.5 + q.y * 3.2 + vSeed * 14.0) + .062 * cos(q.y * 8.9 - q.x * 5.2 - vSeed * 7.0);
+          float soft = 1.0 - smoothstep(.14, .98, r + turbulence * (1.0 - hot + flame * .7));
+          float core = 1.0 - smoothstep(0.0, .48, r);
+          vec3 color = vTint * (.62 + core * mix(.49, 1.05, hot));
+          color = mix(color, mix(vTint, vec3(1.0, .88, .61), core), flame);
+          gl_FragColor = vec4(color, soft * soft * vAlpha);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }
@@ -70,7 +74,7 @@ class ParticleLayer {
     })
     this.mesh = new T.Points(geometry, material)
     this.mesh.frustumCulled = false
-    this.mesh.renderOrder = hot ? 5 : 4
+    this.mesh.renderOrder = style === 'smoke' ? 4 : style === 'flame' ? 5 : 6
     this.pool = Array.from({ length: capacity }, () => ({
       position: new T.Vector3(), velocity: new T.Vector3(), color: new T.Color(), life: 0, age: 0, size: 0, rise: 0, bright: 0, twist: 0,
     }))
@@ -131,9 +135,9 @@ class ParticleLayer {
 }
 
 const impactStyle = {
-  orb: { flash: 2.9, shake: .35, duration: .48, waves: [7], light: 120 },
-  pod: { flash: 3.5, shake: .66, duration: .78, waves: [12, 16], light: 190 },
-  core: { flash: 7.6, shake: 1.13, duration: 1.12, waves: [19, 23, 29], light: 335 },
+  canister: { flash: 3.6, shake: .42, fade: 6.2, duration: .38, waves: [8], light: 158 },
+  crate: { flash: 4.1, shake: .69, fade: 4.5, duration: .69, waves: [13, 18], light: 253 },
+  core: { flash: 8.8, shake: 1.20, fade: 3.7, duration: .94, waves: [18, 24, 32], light: 396 },
 }
 
 type Wave = {
@@ -213,24 +217,27 @@ class Chips {
 
 export class Effects {
   readonly root = new T.Group()
-  private readonly sparks = new ParticleLayer(850, true)
-  private readonly smoke = new ParticleLayer(880, false)
+  private readonly sparks = new ParticleLayer(850, 'spark')
+  private readonly flames = new ParticleLayer(240, 'flame')
+  private readonly smoke = new ParticleLayer(960, 'smoke')
   private readonly random = randomSource(7713)
   private readonly waves: Record<Tool, Wave[]>
   private readonly flashes: Flash[]
   private readonly chips: Chips
   private readonly light = new T.PointLight('#ffd090', 0, 49, 1.75)
   private shake = 0
+  private shakeFade = 6.2
+  private secondBeat = 0
   private lightPower = 0
   private quality = 1
 
   constructor(private ground: Height) {
     this.chips = new Chips(ground)
-    this.root.add(this.sparks.mesh, this.smoke.mesh, this.chips.mesh, this.light)
+    this.root.add(this.sparks.mesh, this.smoke.mesh, this.flames.mesh, this.chips.mesh, this.light)
     const makeWave = (tool: Tool): Wave[] => {
-      const geometry = new T.RingGeometry(tool === 'core' ? .94 : .917, 1, tool === 'pod' ? 6 : 84)
+      const geometry = new T.RingGeometry(tool === 'core' ? .937 : .912, 1, tool === 'crate' ? 4 : 84)
       const pool = Array.from({ length: 8 }, () => {
-        const material = new T.MeshBasicMaterial({ color: tool === 'core' ? '#cd8fff' : tools[tool].color, transparent: true, side: T.DoubleSide,
+        const material = new T.MeshBasicMaterial({ color: tools[tool].color, transparent: true, side: T.DoubleSide,
           blending: T.AdditiveBlending, depthWrite: false, toneMapped: false })
         const mesh = new T.Mesh(geometry.clone(), material)
         mesh.visible = false
@@ -243,15 +250,15 @@ export class Effects {
       geometry.dispose()
       return pool
     }
-    this.waves = { orb: makeWave('orb'), pod: makeWave('pod'), core: makeWave('core') }
+    this.waves = { canister: makeWave('canister'), crate: makeWave('crate'), core: makeWave('core') }
     const geometries: Record<Tool, T.BufferGeometry> = {
-      orb: new T.IcosahedronGeometry(1, 2),
-      pod: new T.CylinderGeometry(1, 1, 1, 6, 1, true),
-      core: new T.OctahedronGeometry(1, 1),
+      canister: new T.IcosahedronGeometry(1, 2),
+      crate: new T.CylinderGeometry(1, 1, 1, 4, 1, true),
+      core: new T.IcosahedronGeometry(1, 1),
     }
     this.flashes = toolOrder.flatMap((tool) => Array.from({ length: 3 }, (): Flash => {
       const material = new T.MeshBasicMaterial({ color: tools[tool].color, transparent: true, depthWrite: false,
-        blending: T.AdditiveBlending, side: tool === 'pod' ? T.DoubleSide : T.FrontSide, toneMapped: false })
+        blending: T.AdditiveBlending, side: tool === 'crate' ? T.DoubleSide : T.FrontSide, toneMapped: false })
       const mesh = new T.Mesh(geometries[tool], material)
       mesh.visible = false
       mesh.renderOrder = 6
@@ -265,7 +272,7 @@ export class Effects {
   trail(tool: Tool, at: T.Vector3) {
     const rng = this.random
     const { x, y, z } = at
-    const scale = tool === 'core' ? 1.8 : tool === 'pod' ? 1.2 : .74
+    const scale = tool === 'core' ? 1.8 : tool === 'crate' ? 1.2 : .74
     for (let i = 0; i < 3; i++) this.sparks.add(x + (rng() - .5) * scale, y + .5 * scale, z + (rng() - .5) * scale,
       (rng() - .5) * 2, .6 + rng() * 2, (rng() - .5) * 2, tools[tool].color, scale * (.35 + rng()), .24 + rng() * .36, -.6, .8)
   }
@@ -277,7 +284,29 @@ export class Effects {
       const speed = spread * (.24 + rng() * .7)
       this.smoke.add(at.x + (rng() - .5) * 1.6, at.y + .22 + rng() * .7, at.z + (rng() - .5) * 1.6,
         Math.cos(angle) * speed, .4 + rng() * (spread * .5), Math.sin(angle) * speed, tint,
-        .7 + rng() * spread * .47, .62 + rng() * life, .14, .24 + rng() * .45, .44, rng() * delay)
+        .85 + rng() * spread * .59, .72 + rng() * life, .22, .31 + rng() * .49, .65, rng() * delay)
+    }
+  }
+
+  private flame(at: T.Vector3, count: number, width: number, rise: number, color: string) {
+    const rng = this.random
+    for (let i = 0; i < count * this.quality; i++) {
+      const angle = i * 2.39996
+      const speed = width * (.23 + rng() * .82)
+      this.flames.add(at.x + Math.cos(angle) * .7, at.y + .26, at.z + Math.sin(angle) * .7,
+        Math.cos(angle) * speed, rise * (.37 + rng() * .8), Math.sin(angle) * speed,
+        color, 1 + rng() * width * .72, .31 + rng() * .74, -3.4, .77, .8, rng() * .19)
+    }
+  }
+
+  private billow(at: T.Vector3, count: number, lift: number, size: number, color: string, edge: string) {
+    const rng = this.random
+    for (let i = 0; i < count * this.quality; i++) {
+      const angle = i * 2.39996
+      const motion = .55 + rng() * 3.1
+      this.smoke.add(at.x + Math.cos(angle) * 1.3, at.y + 1.15 + rng() * 2.1, at.z + Math.sin(angle) * 1.3,
+        Math.cos(angle) * motion, lift * (.47 + rng() * .55), Math.sin(angle) * motion,
+        i % 5 < 2 ? edge : color, size * (.52 + rng() * .69), 2.1 + rng() * 2.35, .32, .56 + rng() * .28, 1.16, .12 + rng() * .43)
     }
   }
 
@@ -294,12 +323,14 @@ export class Effects {
     this.light.color.set(tools[tool].color)
     this.lightPower = Math.max(this.lightPower, style.light)
     this.shake = Math.max(this.shake, style.shake)
-    this.chips.scatter(at, Math.ceil((tool === 'orb' ? 12 : tool === 'pod' ? 27 : 53) * this.quality), tool === 'orb' ? 8 : tool === 'pod' ? 12 : 16)
+    this.shakeFade = Math.min(this.shakeFade, style.fade)
+    if (tool === 'core') this.secondBeat = .26
+    this.chips.scatter(at, Math.ceil((tool === 'canister' ? 12 : tool === 'crate' ? 27 : 53) * this.quality), tool === 'canister' ? 8 : tool === 'crate' ? 12 : 16)
     const members = this.waves[tool]
     style.waves.forEach((radius, i) => {
       const wave = members.find(({ mesh }) => !mesh.visible) ?? members.reduce((a, b) => a.age > b.age ? a : b)
-      wave.age = -i * (tool === 'pod' ? .19 : .125)
-      wave.duration = (tool === 'orb' ? .62 : tool === 'pod' ? .90 : 1.48) + i * .10
+      wave.age = -i * (tool === 'crate' ? .19 : .125)
+      wave.duration = (tool === 'canister' ? .62 : tool === 'crate' ? .90 : 1.48) + i * .10
       wave.radius = radius
       wave.center.copy(i === 0 ? at : foot)
       wave.center.y += .25 + i * .36
@@ -311,44 +342,54 @@ export class Effects {
     const flashes = this.flashes.filter((f) => f.tool === tool)
     const flash = flashes.find(({ mesh }) => !mesh.visible) ?? flashes.reduce((a, b) => a.age > b.age ? a : b)
     flash.age = 0
-    flash.mesh.position.set(x, y + (tool === 'pod' ? 1.80 : .65), z)
+    flash.mesh.position.set(x, y + (tool === 'crate' ? 1.80 : .65), z)
     flash.mesh.scale.setScalar(.1)
     flash.mesh.visible = true
 
-    if (tool === 'orb') {
+    if (tool === 'canister') {
       for (let i = 0; i < 54 * this.quality; i++) {
         const a = rng() * Math.PI * 2
         const v = 4.6 + rng() * 8.2
         this.sparks.add(x, y + .18, z, Math.cos(a) * v, 1.1 + rng() * 8, Math.sin(a) * v,
           i % 3 ? '#ffab68' : '#fff0bb', .18 + rng() * .65, .26 + rng() * .65, -12, .89)
       }
-      this.plume(foot, 37, 4.7, 1.8, '#9d795e')
-    } else if (tool === 'pod') {
+      this.flame(at, 15, 4.5, 3.1, '#ed813f')
+      this.plume(foot, 43, 4.7, 1.9, '#877367', .13)
+    } else if (tool === 'crate') {
       for (let i = 0; i < 116 * this.quality; i++) {
-        const axis = i % 6 * Math.PI / 3 + (rng() - .5) * .33
+        const axis = i % 4 * Math.PI / 2 + (rng() - .5) * .29
         const speed = 3.5 + rng() * 13
         const column = i % 4 === 0
         this.sparks.add(x + Math.cos(axis), y + .55, z + Math.sin(axis), Math.cos(axis) * speed * (column ? .24 : 1),
           column ? 8.5 + rng() * 13 : .55 + rng() * 4, Math.sin(axis) * speed * (column ? .24 : 1),
-          i % 4 ? '#79ecd9' : '#eaffee', .29 + rng() * 1.15, .42 + rng() * .91, column ? -6 : -9, .86, .24, rng() * .21)
+          i % 4 ? '#8adcff' : '#effdff', .29 + rng() * 1.15, .42 + rng() * .91, column ? -6 : -9, .86, .24, rng() * .21)
       }
-      this.plume(foot, 70, 7.6, 2.6, '#a4b1a2', .24)
+      this.flame(at, 33, 4.2, 11.7, '#75c0ea')
+      this.plume(foot, 75, 8, 2.9, '#a6acae', .24)
+      this.billow(at, 30, 6.3, 5.6, '#87939e', '#aebec2')
     } else {
       for (let i = 0; i < 186 * this.quality; i++) {
         const a = i * 2.39996
         const v = 4 + rng() * 17
         const lift = i % 3 === 0 ? 12 + rng() * 12 : 1.9 + rng() * 10
         this.sparks.add(x + Math.cos(a) * 1.3, y + .38 + rng() * 1.09, z + Math.sin(a) * 1.3,
-          Math.cos(a) * v, lift, Math.sin(a) * v, i % 3 ? '#efa4ff' : '#fff0d5', .36 + rng() * 1.58,
+          Math.cos(a) * v, lift, Math.sin(a) * v, i % 3 ? '#ffaf68' : '#fff0d5', .36 + rng() * 1.58,
           .47 + rng() * 1.65, -9.5, .89, 2.1, rng() * .25)
       }
-      this.plume(foot, 130, 11.3, 4.0, '#857787', .27)
-      this.plume(new T.Vector3(x, y + 1.4, z), 76, 6.6, 4.6, '#ad91ab', 1.1)
+      this.flame(at, 65, 7.6, 9.1, '#f16932')
+      this.flame(new T.Vector3(x, y + 1.6, z), 28, 3.8, 11.4, '#ffae63')
+      this.plume(foot, 137, 12.3, 4.1, '#9b8273', .31)
+      this.billow(at, 65, 7.6, 8.1, '#584c48', '#88766d')
     }
   }
 
   update(dt: number, scale: number) {
-    this.shake *= Math.exp(-dt * 4.3)
+    this.shake *= Math.exp(-dt * this.shakeFade)
+    if (this.secondBeat > 0) {
+      this.secondBeat -= dt
+      if (this.secondBeat <= 0) this.shake = Math.max(this.shake, .55)
+    }
+    if (this.shake < .008) this.shakeFade = 6.2
     this.lightPower *= Math.exp(-dt * 8.7)
     this.light.intensity = this.lightPower < .04 ? 0 : this.lightPower
     for (const wave of Object.values(this.waves).flat()) {
@@ -372,7 +413,7 @@ export class Effects {
       flash.age += dt
       const t = Math.min(1, flash.age / style.duration)
       const size = .15 + style.flash * Math.pow(t, .47)
-      if (flash.tool === 'pod') {
+      if (flash.tool === 'crate') {
         flash.mesh.scale.set(size * .64, 1.1 + 12 * Math.sin(t * Math.PI), size * .64)
         flash.mesh.rotation.y += dt * 2.9
       } else {
@@ -383,6 +424,7 @@ export class Effects {
       if (t === 1) flash.mesh.visible = false
     }
     this.smoke.update(dt, scale)
+    this.flames.update(dt, scale)
     this.sparks.update(dt, scale)
     this.chips.update(dt)
     return this.shake
@@ -391,10 +433,12 @@ export class Effects {
   clear() {
     this.sparks.clear()
     this.smoke.clear()
+    this.flames.clear()
     this.chips.clear()
-    this.lightPower = this.light.intensity = this.shake = 0
+    this.lightPower = this.light.intensity = this.shake = this.secondBeat = 0
+    this.shakeFade = 6.2
     for (const item of [...Object.values(this.waves).flat(), ...this.flashes]) item.mesh.visible = false
   }
 
-  get count() { return this.sparks.active + this.smoke.active + this.chips.active }
+  get count() { return this.sparks.active + this.flames.active + this.smoke.active + this.chips.active }
 }

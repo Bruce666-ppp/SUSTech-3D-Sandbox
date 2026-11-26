@@ -1,0 +1,19 @@
+南科大 3D 沙盒 / SUSTech 3D Sandbox
+校园数据与授权 / Campus data notices
+
+校园建筑与道路来自 OpenStreetMap，公开高程来自 Copernicus GLO-30。
+三维外观使用美术近似，地图及高程的许可证和出处详见下方链接。
+
+校园几何 / Campus geometry
+© OpenStreetMap contributors. The local vector extract is available under the Open Database License (ODbL) 1.0.
+https://www.openstreetmap.org/copyright
+https://opendatacommons.org/licenses/odbl/1-0/
+
+地形 / Terrain
+produced using Copernicus WorldDEM-30 © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018 provided under COPERNICUS by the European Union and ESA; all rights reserved
+https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM
+https://registry.opendata.aws/copernicus-dem/
+
+项目为独立的风格化校园展示，数据处理过程和建模限制见仓库说明。
+This independent visualization uses stylized exteriors. See the repository for extraction, limitations and visual references.
+https://github.com/Bruce666-ppp/SUSTech-3D-Sandbox/blob/main/DATA-SOURCES.md

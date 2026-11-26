@@ -15,9 +15,9 @@ type Flight = {
 }
 
 const shape = {
-  orb: { height: 29, x: -4, z: -1, size: 1.32, modelScale: 1.27 },
-  pod: { height: 36, x: 14, z: -9, size: 1.75, modelScale: 1.32 },
-  core: { height: 41, x: -8, z: 4, size: 2.03, modelScale: 1.29 },
+  canister: { height: 25, x: -7, z: -2, size: 1.33, modelScale: 1.42 },
+  crate: { height: 35, x: 13, z: -8, size: 1.77, modelScale: 1.47 },
+  core: { height: 41, x: -8, z: 6, size: 2.12, modelScale: 1.41 },
 }
 
 function glowingRing(radius: number, tube: number, color: string, segments = 36) {
@@ -29,39 +29,51 @@ function makeModel(tool: Tool) {
   const glow = new T.MeshBasicMaterial({ color: tools[tool].color, toneMapped: false })
   const casing = (color: string) => new T.MeshStandardMaterial({ color, roughness: .38, metalness: .26, emissive: tools[tool].color, emissiveIntensity: .16 })
   const rings: T.Mesh[] = []
-  if (tool === 'orb') {
-    model.add(new T.Mesh(new T.IcosahedronGeometry(.82, 2), casing('#d8a176')))
-    const pearl = new T.Mesh(new T.IcosahedronGeometry(.64, 1), new T.MeshBasicMaterial({ color: '#fff3ce', wireframe: true }))
-    pearl.scale.setScalar(1.35)
-    model.add(pearl)
-    rings.push(glowingRing(1.12, .045, '#ffbd72'), glowingRing(.97, .042, '#fff6d5'))
-    rings[1].rotation.x = Math.PI * .63
-  } else if (tool === 'pod') {
-    model.add(new T.Mesh(new T.CylinderGeometry(.70, 1.02, 1.9, 6, 1), casing('#295c68')))
-    const cap = new T.Mesh(new T.CylinderGeometry(.36, .70, .43, 6), casing('#bce8dd'))
-    cap.position.y = 1.12
-    model.add(cap)
-    const vent = new T.Mesh(new T.CylinderGeometry(.48, .66, .26, 6), glow)
-    vent.position.y = -1.055
-    model.add(vent)
-    for (let i = 0; i < 6; i++) {
-      const angle = i * Math.PI / 3
-      const fin = new T.Mesh(new T.BoxGeometry(.11, 1.12, .27), casing('#8cbbb6'))
-      fin.position.set(Math.cos(angle) * .87, -.18, Math.sin(angle) * .87)
-      fin.rotation.y = -angle
-      model.add(fin)
+  if (tool === 'canister') {
+    const drum = new T.Mesh(new T.CylinderGeometry(.69, .78, 1.47, 12), casing('#ac7350'))
+    model.add(drum)
+    for (const y of [-.77, .75]) {
+      const trim = new T.Mesh(new T.CylinderGeometry(.76, .76, .19, 12), casing('#495454'))
+      trim.position.y = y
+      model.add(trim)
     }
-    rings.push(glowingRing(1, .059, '#a4fff1', 6), glowingRing(.74, .042, '#ecfff2', 6))
-    rings.forEach((ring, i) => { ring.rotation.x = Math.PI / 2; ring.position.y = i ? .75 : -.64 })
+    for (let i = 0; i < 3; i++) {
+      const strip = new T.Mesh(new T.BoxGeometry(.07, .86, .26), glow)
+      const angle = i * Math.PI * 2 / 3
+      strip.position.set(Math.cos(angle) * .73, 0, Math.sin(angle) * .73)
+      strip.rotation.y = -angle
+      model.add(strip)
+    }
+    rings.push(glowingRing(.76, .038, '#ffd489', 20), glowingRing(.78, .041, '#fff3cb', 20))
+    rings.forEach((ring, i) => { ring.position.y = i ? .53 : -.48; ring.rotation.x = Math.PI / 2 })
+  } else if (tool === 'crate') {
+    model.add(new T.Mesh(new T.BoxGeometry(1.51, 1.36, 1.51), casing('#42697c')))
+    for (const y of [-.68, .68]) {
+      const frame = new T.Mesh(new T.BoxGeometry(1.72, .19, 1.72), casing('#889d9f'))
+      frame.position.y = y
+      model.add(frame)
+    }
+    for (const x of [-.74, .74]) for (const z of [-.74, .74]) {
+      const corner = new T.Mesh(new T.BoxGeometry(.21, 1.42, .21), casing('#a9bdc0'))
+      corner.position.set(x, 0, z)
+      model.add(corner)
+    }
+    for (const side of [-1, 1]) {
+      const plate = new T.Mesh(new T.BoxGeometry(1.13, .20, .052), glow)
+      plate.position.set(0, .15, side * .77)
+      model.add(plate)
+    }
+    rings.push(glowingRing(.76, .052, '#a8e7ff', 4), glowingRing(1.01, .036, '#def7ff', 4))
+    rings.forEach((ring, i) => { ring.rotation.x = Math.PI / 2; ring.rotation.z = Math.PI / 4; ring.position.y = -.65 - i * .2 })
   } else {
-    model.add(new T.Mesh(new T.OctahedronGeometry(1.43), casing('#9870b2')))
-    model.add(new T.Mesh(new T.OctahedronGeometry(1.12), new T.MeshBasicMaterial({ color: '#f7d6ff', wireframe: true, toneMapped: false })))
-    rings.push(glowingRing(1.67, .052, '#f6caff'), glowingRing(1.92, .053, '#b7b4ff'), glowingRing(2.06, .032, '#ffecfa'))
+    model.add(new T.Mesh(new T.IcosahedronGeometry(1.29, 1), casing('#9f493d')))
+    model.add(new T.Mesh(new T.IcosahedronGeometry(1.30, 1), new T.MeshBasicMaterial({ color: '#ffe2ae', wireframe: true, toneMapped: false })))
+    rings.push(glowingRing(1.54, .059, '#ffaf76'), glowingRing(1.82, .049, '#e7675c'), glowingRing(1.98, .038, '#fff2cf'))
     rings[1].rotation.y = Math.PI / 3
     rings[2].rotation.x = Math.PI / 2
     for (let i = 0; i < 3; i++) {
-      const chip = new T.Mesh(new T.OctahedronGeometry(.18), glow)
-      chip.position.set(1.92 * Math.cos(i * Math.PI * 2 / 3), 0, 1.92 * Math.sin(i * Math.PI * 2 / 3))
+      const chip = new T.Mesh(new T.OctahedronGeometry(.21), glow)
+      chip.position.set(1.76 * Math.cos(i * Math.PI * 2 / 3), 0, 1.76 * Math.sin(i * Math.PI * 2 / 3))
       model.add(chip)
     }
   }
@@ -81,7 +93,7 @@ export class Descent {
       model.scale.setScalar(shape[tool].modelScale)
       const guide = new T.Group()
       const guideMaterial = new T.MeshBasicMaterial({ color: tools[tool].color, transparent: true, opacity: .76, side: T.DoubleSide, depthWrite: false })
-      const ring = new T.Mesh(new T.RingGeometry(.94, 1, tool === 'pod' ? 6 : 48), guideMaterial)
+      const ring = new T.Mesh(new T.RingGeometry(.94, 1, tool === 'crate' ? 4 : 48), guideMaterial)
       const cross = new T.Mesh(new T.RingGeometry(.16, .23, 20), guideMaterial)
       ring.rotation.x = cross.rotation.x = -Math.PI / 2
       ring.scale.setScalar(shape[tool].size)
@@ -99,12 +111,12 @@ export class Descent {
 
   private pose(tool: Tool, at: T.Vector3, t: number, range: number, result: T.Vector3) {
     const s = shape[tool]
-    if (tool === 'orb') {
+    if (tool === 'canister') {
       const arc = Math.sin(t * Math.PI) * (1 - t)
       return result.set(at.x + (s.x * (1 - t) + Math.sin(t * 9) * arc * 2.4) * range,
         at.y + .82 + s.height * (1 - t ** 1.77) * range, at.z + (s.z * (1 - t) + Math.cos(t * 7) * arc * 1.45) * range)
     }
-    if (tool === 'pod') {
+    if (tool === 'crate') {
       const brake = .65 * T.MathUtils.smoothstep(t, 0, .61) + .35 * T.MathUtils.smoothstep(t, .63, 1)
       return result.set(at.x + s.x * (1 - t) ** 2 * range, at.y + 1.06 + s.height * (1 - brake) * range, at.z + s.z * (1 - t) ** 1.5 * range)
     }
@@ -162,8 +174,8 @@ export class Descent {
       }
       this.pose(f.tool, f.target, t, f.range, f.model.position)
       f.guide.scale.setScalar(1 + .16 * Math.sin(t * 12) + .44 * t)
-      if (f.tool === 'orb') f.model.rotation.set(t * 8.2, t * 4, t * 3.4)
-      if (f.tool === 'pod') {
+      if (f.tool === 'canister') f.model.rotation.set(t * 10.4, t * 4.4, t * 4.1)
+      if (f.tool === 'crate') {
         f.model.rotation.set(-.63 * (1 - t), t * 5.1, .38 * (1 - t))
         const brake = 1 + .52 * Math.sin(Math.PI * T.MathUtils.smoothstep(t, .46, .85))
         for (const ring of f.rings) ring.scale.setScalar(brake)

@@ -21,11 +21,49 @@ export function inside(x: number, z: number, ring: readonly Point[]) {
   return result
 }
 
+export function boundsOf(ring: readonly Point[]): Bounds {
+  return [
+    Math.min(...ring.map((p) => p[0])), Math.min(...ring.map((p) => p[1])),
+    Math.max(...ring.map((p) => p[0])), Math.max(...ring.map((p) => p[1])),
+  ]
+}
+
+export function centerOf(ring: readonly Point[]): Point {
+  let x = 0
+  let z = 0
+  for (const point of ring) {
+    x += point[0]
+    z += point[1]
+  }
+  return [x / ring.length, z / ring.length]
+}
+
 export function rectangle(x: number, z: number, w: number, d: number, angle = 0): Point[] {
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
   const offsets: Point[] = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]]
   return offsets.map(([a, b]) => [x + a * cos - b * sin, z + a * sin + b * cos])
+}
+
+export function clipPolygon(ring: readonly Point[], [west, north, east, south]: Bounds): Point[] {
+  let output = [...ring]
+  const edges = [[0, west, 1], [0, east, -1], [1, north, 1], [1, south, -1]] as const
+  for (const [axis, edge, sense] of edges) {
+    const input = output
+    output = []
+    for (let i = 0; i < input.length; i++) {
+      const a = input[(i + input.length - 1) % input.length]
+      const b = input[i]
+      const hasA = (a[axis] - edge) * sense >= 0
+      const hasB = (b[axis] - edge) * sense >= 0
+      if (hasA !== hasB) {
+        const t = (edge - a[axis]) / (b[axis] - a[axis])
+        output.push([T.MathUtils.lerp(a[0], b[0], t), T.MathUtils.lerp(a[1], b[1], t)])
+      }
+      if (hasB) output.push(b)
+    }
+  }
+  return output
 }
 
 export function planar(ring: readonly Point[], at: Height) {
@@ -69,7 +107,8 @@ export function ribbon(line: readonly Point[], width: number, height: Height) {
   return geometry
 }
 
-export function makeTerrain(bounds: Bounds, resolution: number, height: Height, tint: (x: number, z: number, y: number) => T.Color, floor = -5) {
+export function makeTerrain(bounds: Bounds, resolution: number, height: Height, tint: (x: number, z: number, y: number) => T.Color, floor = -5,
+  edgeColors = ['#526b58', '#354940', '#28413c', '#173333']) {
   const [minX, minZ, maxX, maxZ] = bounds
   const positions: number[] = []
   const colors: number[] = []
@@ -106,7 +145,7 @@ export function makeTerrain(bounds: Bounds, resolution: number, height: Height, 
   const sidePositions: number[] = []
   const sideColors: number[] = []
   const sideIndices: number[] = []
-  const bands = [new T.Color('#526b58'), new T.Color('#354940'), new T.Color('#28413c'), new T.Color('#173333')]
+  const bands = edgeColors.map((color) => new T.Color(color))
   for (const index of edge) {
     const [x, y, z] = positions.slice(index * 3, index * 3 + 3)
     sidePositions.push(x, y - .01, z, x, Math.max(floor + 1.6, y - 1.1), z, x, floor + 1.1, z, x, floor, z)

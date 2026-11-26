@@ -9,8 +9,8 @@ const root = resolve('dist')
 const prefix = '/SUSTech-3D-Sandbox/'
 const engine = process.argv[2] ?? process.env.SUSTECH_BROWSER ?? 'chromium'
 const results = resolve(process.env.SUSTECH_SCREENSHOT_DIR ?? 'test-results')
-const tools = [['orb', 1], ['pod', 5], ['core', 15]]
-const clockReset = { orb: 0, pod: 0, core: 0 }
+const tools = [['canister', 1], ['crate', 5], ['core', 15]]
+const clockReset = { canister: 0, crate: 0, core: 0 }
 const issues = []
 assert.ok(['chromium', 'webkit'].includes(engine), 'Use chromium or webkit')
 await mkdir(results, { recursive: true })
@@ -35,8 +35,8 @@ let browser
 const report = (message) => console.log(`PASS ${message}`)
 const read = (page) => page.evaluate(() => window.readSandboxState())
 const distance = (a, b) => Math.hypot(...a.map((value, i) => value - b[i]))
-const ready = (page) => page.waitForFunction(() => window.readSandboxState?.().ready && window.readSandboxState().calls > 0
-  && document.querySelector('main').getAttribute('aria-busy') === 'false')
+const ready = (page, mode) => page.waitForFunction((name) => window.readSandboxState?.().mode === name && window.readSandboxState().calls > 0
+  && document.querySelector('main').getAttribute('aria-busy') === 'false', mode)
 const toolButton = (page, tool) => page.locator(`#tool-${tool}`)
 const cooling = (page, tool) => toolButton(page, tool).evaluate((button) => button.classList.contains('is-cooling'))
 
@@ -86,7 +86,7 @@ async function frameSample(page, count) {
 async function rapidDrops(page) {
   for (const [tool] of tools) {
     await toolButton(page, tool).click()
-    await clickTarget(page, tool === 'pod' ? 'terrainScreen' : 'structureScreen')
+    await clickTarget(page, tool === 'crate' ? 'terrainScreen' : 'structureScreen')
   }
   const during = await read(page)
   assert.equal(during.stats.impacts + during.stats.pending, 3)
@@ -122,23 +122,34 @@ try {
   const page = await context.newPage()
   page.setDefaultTimeout(30000)
   track(page)
+  const assets = new Set()
+  page.on('response', (response) => assets.add(new URL(response.url()).pathname))
   const navigation = await page.goto(url, { waitUntil: 'domcontentloaded' })
   assert.equal(navigation.status(), 200)
-  await ready(page)
-  const initial = await read(page)
-  assert.equal(initial.language, 'zh-CN')
-  assert.equal(initial.selected, 'orb')
-  assert.deepEqual(initial.stats, { intact: 16, total: 16, fragments: 0, moving: 0, collisions: 0, scars: 0, particles: 0, impacts: 0, pending: 0 })
-  assert.equal(await page.locator('nav.modes, #campus-tab, #sandbox-tab').count(), 0)
-  assert.equal(await page.locator('.tool-dock button').count(), 3)
-  await shot(page, 'mistridge-campus')
-  report('Production files render the single fictional mountain campus, with 16 intact buildings and three tools.')
+  await ready(page, 'campus')
+  const campus = await read(page)
+  assert.equal(campus.language, 'zh-CN')
+  assert.equal(campus.buildings, 113)
+  assert.equal(campus.elevationRange, 123)
+  assert.equal(await page.locator('.landmark-item').count(), 15)
+  assert.ok(await page.locator('.map-pin:visible').count() >= 3)
+  assert.equal(await page.locator('.tool-dock, #rebuild').filter({ visible: true }).count(), 0)
+  assert.ok([...assets].some((path) => path.includes('/campus-')))
+  assert.ok([...assets].every((path) => !path.includes('/playground-')))
+  await page.keyboard.press('3')
+  await page.mouse.click(1105, 622)
+  assert.equal((await read(page)).stats, undefined)
+  assert.equal((await read(page)).selected, undefined)
+  await page.click('#reset')
+  await page.waitForFunction((pose) => window.readSandboxState().camera.every((coordinate, i) => Math.abs(coordinate - pose[i]) < .04), campus.camera)
+  await shot(page, 'sustech-campus')
+  report('The default campus uses 113 mapped footprints and retains data attribution and 15 landmarks. The effects module and launch controls are absent from this scene.')
 
   await page.mouse.move(1120, 620)
   await page.mouse.down()
   await page.mouse.move(1195, 570, { steps: 8 })
   await page.mouse.up()
-  await page.waitForFunction((pose) => window.readSandboxState().camera.some((coordinate, i) => Math.abs(coordinate - pose[i]) > 1), initial.camera)
+  await page.waitForFunction((pose) => window.readSandboxState().camera.some((coordinate, i) => Math.abs(coordinate - pose[i]) > 1), campus.camera)
   const orbited = await read(page)
   await page.mouse.wheel(0, -350)
   await page.waitForFunction((pose) => window.readSandboxState().camera.some((coordinate, i) => Math.abs(coordinate - pose[i]) > 1), orbited.camera)
@@ -148,20 +159,49 @@ try {
   await page.mouse.move(1230, 603, { steps: 8 })
   await page.mouse.up({ button: 'right' })
   await page.waitForFunction((target) => window.readSandboxState().target.some((coordinate, i) => Math.abs(coordinate - target[i]) > .6), zoomed.target)
-  assert.equal((await read(page)).stats.pending, 0)
+  assert.equal((await read(page)).stats, undefined)
   await page.click('#reset')
-  await page.waitForFunction((pose) => window.readSandboxState().camera.every((coordinate, i) => Math.abs(coordinate - pose[i]) < .04), initial.camera)
+  await page.waitForFunction((pose) => window.readSandboxState().camera.every((coordinate, i) => Math.abs(coordinate - pose[i]) < .04), campus.camera)
   await page.click('#zoom-in')
-  assert.ok(distance((await read(page)).camera, initial.target) < distance(initial.camera, initial.target))
+  assert.ok(distance((await read(page)).camera, campus.target) < distance(campus.camera, campus.target))
   await page.click('#zoom-out')
+  await page.click('#overview')
+  await page.waitForFunction(() => window.readSandboxState().camera[1] > 350)
   await page.click('#reset')
-  await page.waitForFunction((pose) => window.readSandboxState().camera.every((coordinate, i) => Math.abs(coordinate - pose[i]) < .04), initial.camera)
-  report('Dragging, wheel zoom, panning, zoom buttons and camera reset work. Camera gestures leave the scene intact.')
+  await page.waitForFunction((pose) => window.readSandboxState().camera.every((coordinate, i) => Math.abs(coordinate - pose[i]) < .04), campus.camera)
+  await page.click('[data-landmark="engineering"]')
+  await page.waitForFunction(() => {
+    const { camera, target } = window.readSandboxState()
+    return Math.hypot(...camera.map((value, i) => value - target[i])) < 43
+  })
+  assert.deepEqual(await page.locator('.landmark-specs strong').allTextContents(), ['9 层 · 42.3 米', '10 层 · 46.8 米'])
+  assert.equal(await page.locator('.landmark-source').getAttribute('href'), 'https://aa.sustech.edu.cn/news/detail/27.html')
+  await page.click('#language')
+  assert.equal(await page.locator('#landmark-info h2').textContent(), 'College of Engineering')
+  assert.deepEqual(await page.locator('.landmark-specs strong').allTextContents(), ['9 floors · 42.3 m', '10 floors · 46.8 m'])
+  await page.click('#language')
+  await page.click('[data-landmark="lynn"]')
+  assert.equal(await page.locator('.landmark-specs strong').textContent(), '3 层')
+  await page.waitForTimeout(660)
+  await shot(page, 'sustech-lynn-library')
+  await page.click('[data-landmark="humanities"]')
+  assert.equal(await page.locator('#landmark-info h2').textContent(), '人文社会科学学院')
+  report('Campus orbit, zoom, pan, overhead view, camera reset and close-ups work. Published dimensions and landmarks translate in place.')
+
+  await page.click('#sandbox-tab')
+  await ready(page, 'sandbox')
+  const initial = await read(page)
+  assert.equal(initial.selected, 'canister')
+  assert.deepEqual(initial.stats, { intact: 12, damaged: 0, collapsing: 0, ruined: 0, total: 12, fragments: 0, moving: 0, collisions: 0, scars: 0, particles: 0, impacts: 0, pending: 0 })
+  assert.equal(await page.locator('.tool-dock button:visible').count(), 3)
+  assert.equal(await page.locator('#landmark-panel:visible, #overview:visible').count(), 0)
+  assert.equal(initial.buildings, undefined)
+  await shot(page, 'film-backlot')
 
   await page.click('#language')
   assert.equal(await page.locator('html').getAttribute('lang'), 'en-US')
-  assert.equal(await page.locator('h1').textContent(), 'Mistridge Campus')
-  assert.deepEqual(await page.locator('.tool-copy strong').allTextContents(), ['Impact Orb', 'Energy Pod', 'Mega Core'])
+  assert.equal(await page.locator('h1:visible').textContent(), 'The Backlot')
+  assert.deepEqual(await page.locator('.tool-copy strong').allTextContents(), ['Flash Canister', 'Pyro Crate', 'Firecloud Core'])
   const canFullscreen = await page.evaluate(() => (document.fullscreenEnabled && !!document.documentElement.requestFullscreen) || !!document.documentElement.webkitRequestFullscreen)
   await page.click('#fullscreen')
   if (canFullscreen) {
@@ -192,7 +232,7 @@ try {
   }
   await page.click('#language')
   assert.equal(await page.locator('html').getAttribute('lang'), 'zh-CN')
-  assert.deepEqual(await page.locator('.tool-copy strong').allTextContents(), ['冲击球', '能量舱', '超级能量核心'])
+  assert.deepEqual(await page.locator('.tool-copy strong').allTextContents(), ['闪焰筒', '烟火箱', '焰云核心'])
   await page.click('#zoom-in')
 
   const effects = []
@@ -228,36 +268,42 @@ try {
     const midair = await frame.jsonValue()
     assert.equal(midair.impacts, 0)
     motion.push(midair.ratio / airborne.drops[0].height)
-    frames.add(await shot(page, `${tool}-drop`))
-
-    const contact = await waitForContact(page, tool)
-    await page.waitForFunction((previous) => {
+    const damagedFrame = page.waitForFunction((name) => {
       const state = window.readSandboxState()
-      return state.stats.fragments > previous && state.stats.collisions > 0 && state.groundOffset < -.30
-    }, contact.fragments)
+      return state.lastImpact === name && state.stats.damaged > 0 && state.stats.fragments === 0
+    }, tool)
+    frames.add(await shot(page, `${tool}-drop`))
+    await damagedFrame
+    await waitForContact(page, tool)
+    await page.waitForFunction(() => {
+      const state = window.readSandboxState()
+      return state.stats.collisions > 0 && state.groundOffset < -.30
+    })
     const moved = await read(page)
     assert.ok(moved.stats.intact < initial.stats.intact)
     assert.equal(moved.stats.impacts, 1)
     assert.equal(moved.stats.scars, 1)
     assert.ok(moved.stats.particles > 15)
-    frames.add(await shot(page, `${tool}-impact`))
-
-    await page.waitForFunction(() => {
-      const state = window.readSandboxState()
-      return state.tilt > .14 && state.offset > 1
-    })
     if (tool === 'core') {
-      await page.waitForFunction(() => window.readSandboxState().stats.fragments >= 45)
-      await shot(page, 'mistridge-collapse')
+      await page.waitForFunction(() => {
+        const state = window.readSandboxState()
+        return state.stats.collapsing > 0 && state.stats.fragments >= 28 && state.offset > 1
+      })
     }
+    frames.add(await shot(page, `${tool}-impact`))
     await page.waitForFunction(() => window.readSandboxState().stats.particles === 0)
     const aftermath = await read(page)
     assert.ok(aftermath.stats.fragments >= moved.stats.fragments)
     assert.equal(aftermath.stats.scars, 1)
     assert.equal(aftermath.stats.impacts, 1)
     assert.ok(aftermath.groundOffset < -.4)
+    assert.ok(aftermath.offset > .5 && aftermath.tilt > .1)
     effects.push(aftermath.stats.fragments)
-    if (tool === 'core') await shot(page, 'mistridge-ruins')
+    if (tool === 'canister') assert.ok(aftermath.stats.damaged > 0 && aftermath.stats.ruined === 0)
+    if (tool === 'core') {
+      assert.ok(aftermath.stats.ruined >= 3)
+      await shot(page, 'film-backlot-ruins')
+    }
     report(`${tool} falls before contact and changes the scene over time. ${aftermath.stats.fragments} released modules, ${aftermath.stats.collisions} collisions, peak rotation ${aftermath.tilt.toFixed(2)} rad.`)
   }
   assert.equal(frames.size, 6)
@@ -271,7 +317,7 @@ try {
   const rebuilt = await read(page)
   assert.deepEqual(rebuilt.stats, initial.stats)
   assert.deepEqual(rebuilt.readyAt, clockReset)
-  assert.equal(rebuilt.selected, 'orb')
+  assert.equal(rebuilt.selected, 'canister')
   assert.equal(rebuilt.groundOffset, 0)
   assert.deepEqual(rebuilt.drops, [])
 
@@ -279,7 +325,7 @@ try {
   await clickTarget(page, 'terrainScreen')
   await page.waitForFunction(() => window.readSandboxState().groundOffset < -1)
   await page.waitForFunction(() => window.readSandboxState().stats.particles < 40)
-  await shot(page, 'mistridge-terrain')
+  await shot(page, 'film-backlot-terrain')
   assert.equal((await read(page)).stats.scars, 1)
   await page.click('#rebuild')
   await toolButton(page, 'core').click()
@@ -290,6 +336,18 @@ try {
   assert.deepEqual((await read(page)).stats, initial.stats)
   assert.deepEqual((await read(page)).readyAt, clockReset)
   report('A ground drop leaves a persistent scar and animated depression. Rebuild restores the scene and cancels an unfinished drop.')
+
+  await toolButton(page, 'core').click()
+  await clickTarget(page)
+  await page.click('#campus-tab')
+  await ready(page, 'campus')
+  assert.equal((await read(page)).stats, undefined)
+  assert.deepEqual((await read(page)).memory, campus.memory)
+  await page.click('#sandbox-tab')
+  await ready(page, 'sandbox')
+  assert.deepEqual((await read(page)).stats, initial.stats)
+  assert.deepEqual((await read(page)).readyAt, clockReset)
+  report('Leaving mid-drop disposes the set. Returning to campus restores its render resources and returning to the backlot starts a fresh world.')
 
   const baseline = await frameSample(page, 48)
   const stressed = frameSample(page, 155)
@@ -306,7 +364,7 @@ try {
   await page.click('#language')
   await page.selectOption('#quality', 'medium')
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await ready(page)
+  await ready(page, 'sandbox')
   const preferences = await read(page)
   assert.equal(preferences.language, 'en-US')
   assert.equal(preferences.quality, 'medium')
@@ -314,20 +372,37 @@ try {
   report('Language, graphics and sound settings persist after reload.')
   await context.close()
 
+  const direct = await browser.newPage()
+  track(direct)
+  const directAssets = new Set()
+  direct.on('response', (response) => directAssets.add(new URL(response.url()).pathname))
+  await direct.goto(`${url}#sandbox`, { waitUntil: 'domcontentloaded' })
+  await ready(direct, 'sandbox')
+  assert.ok([...directAssets].some((path) => path.includes('/playground-')))
+  assert.ok([...directAssets].every((path) => !path.includes('/campus-')))
+  await direct.close()
+  report('The backlot deep link loads without the campus data chunk.')
+
   const mobileOptions = engine === 'webkit' ? { ...devices['iPhone 15'], deviceScaleFactor: 1 }
     : { viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true }
   const mobileContext = await browser.newContext(mobileOptions)
   const mobile = await mobileContext.newPage()
   track(mobile)
   await mobile.goto(url, { waitUntil: 'domcontentloaded' })
-  await ready(mobile)
-  await shot(mobile, 'mistridge-mobile')
-  await mobile.tap('#tool-pod')
-  assert.equal((await read(mobile)).selected, 'pod')
+  await ready(mobile, 'campus')
+  await shot(mobile, 'sustech-campus-mobile')
+  await mobile.tap('#landmark-toggle')
+  await mobile.tap('[data-landmark="lynn"]')
+  assert.equal(await mobile.locator('#landmark-info h2').textContent(), '琳恩图书馆')
+  await mobile.tap('#sandbox-tab')
+  await ready(mobile, 'sandbox')
+  await shot(mobile, 'film-backlot-mobile')
+  await mobile.tap('#tool-crate')
+  assert.equal((await read(mobile)).selected, 'crate')
   const target = (await read(mobile)).structureScreen
   await mobile.touchscreen.tap(...target)
-  assert.equal((await read(mobile)).drops[0]?.tool, 'pod')
-  await waitForContact(mobile, 'pod')
+  assert.equal((await read(mobile)).drops[0]?.tool, 'crate')
+  await waitForContact(mobile, 'crate')
   const { width, height } = mobileOptions.viewport
   assert.equal(await mobile.evaluate(() => document.documentElement.scrollWidth), width)
   await mobile.setViewportSize({ width: height, height: width })

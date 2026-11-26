@@ -1,33 +1,44 @@
 # 南科大 3D 沙盒
 
-[English](README.md) · [GitHub Pages 在线试玩](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [场景素材与授权](DATA-SOURCES.md)
+[English](README.md) · [校园探索](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/) · [特效试验场](https://bruce666-ppp.github.io/SUSTech-3D-Sandbox/#sandbox) · [数据来源和授权](DATA-SOURCES.md)
 
-岚谷校园是一座虚构的山地微缩校园，有环湖步道、跑道、植被和 16 座可分块的建筑。打开网页即可旋转、缩放和平移。使用底部工具栏选择道具，再点击或轻触场景。道具会从空中落向标记位置，接触场景后触发特效。
+## 校园探索
 
-![岚谷校园全景与底部投放工具栏](docs/screenshots/mistridge-campus.png)
+首页是深圳南方科技大学的风格化三维校园。建筑和道路采用 OpenStreetMap 数据，山体采用 Copernicus GLO-30 高程。场景包含 113 个测绘建筑轮廓、道路、水体、运动场及 15 个双语地标。点选地标可移动镜头，查看介绍及已有公开资料。
 
-| 快捷键 | 道具 | 冷却 | 表现 |
+![依据公开地理数据绘制的南科大全景](docs/screenshots/sustech-campus.png)
+
+重点建筑绘制了琳恩图书馆的三角天窗和格栅、工学院的庭院、一丹图书馆的玻璃幕墙及人文社科学院的坡屋顶。部分外观和楼高采用美术近似，数据覆盖和地表处理见来源说明。 [琳恩图书馆近景](docs/screenshots/sustech-lynn-library.png) · [数据和建模说明](DATA-SOURCES.md)
+
+## 特效试验场
+
+顶部的 **特效试验场** 进入独立的虚构影视片场。这里有独立地形和 12 座可分块布景。底部选择道具，再点击或轻触布景。道具先完成空中下落，接触后才触发闪光、烟尘、冲击波与刚体动画。
+
+| 快捷键 | 道具 | 冷却 | 画面表现 |
 | --- | --- | --- | --- |
-| `1` | 冲击球 ★ | 1 秒 | 琥珀色圆球翻滚，落地后散出火花和一圈扬尘 |
-| `2` | 能量舱 ★★★ | 5 秒 | 青色胶囊分段减速，触地后升起光柱与六边形光波 |
-| `3` | 超级能量核心 ★★★★★ | 15 秒 | 紫色核心旋转后快速下落，触发层叠光波与烟尘 |
+| `1` | 闪焰筒 | 1 秒 | 琥珀火花与局部立面受损 |
+| `2` | 烟火箱 | 5 秒 | 青色闪光、方形光波与浅色烟柱 |
+| `3` | 焰云核心 | 15 秒 | 多段闪光、暖色火团和深色烟柱 |
 
-建筑窗格和屋顶细节会跟随所在模块分离、倾倒和碰撞。粒子消散后，废墟与地表痕迹会保留。点击 **重建场景** 恢复建筑、地面和冷却，并取消正在下落的道具。点击 **重置镜头** 返回初始视角。
+布景会经过完整、受损、坍塌和废墟状态。烟尘散去后，废墟和地表痕迹会保留。**重建场景**恢复布景、地面和冷却，并取消正在下落的道具。 [试验场全景](docs/screenshots/film-backlot.png) · [保留的废墟](docs/screenshots/film-backlot-ruins.png)
 
-| 操作 | 功能 |
+![虚构布景中的光波和模块坍塌](docs/screenshots/film-backlot-collapse.png)
+
+## 操作
+
+| 输入 | 功能 |
 | --- | --- |
 | 左键拖动或单指拖动 | 旋转 |
 | 滚轮或双指捏合 | 缩放 |
 | 右键拖动或双指拖动 | 平移 |
-| 点击或轻触场景 | 投放选中道具 |
+| 地标列表或地图标记 | 查看校园地点 |
+| 点击或轻触试验场 | 投放已选道具 |
 
-右上角提供简体中文和 English 切换、音效开关、画质和全屏。语言、画质和音效偏好保存在本地。
+顶部可切换场景、语言、画质、音效和全屏。右下角提供重置镜头、俯瞰校园或重建布景。偏好保存在浏览器。
 
-[能量核心下落](docs/screenshots/mistridge-drop.png) · [建筑模块倾倒](docs/screenshots/mistridge-collapse.png) · [地表痕迹](docs/screenshots/mistridge-terrain.png)
+## 运行与验证
 
-## 本地运行
-
-使用 Node.js 22.12 或更新版本，以及支持 WebGL 2 的浏览器。GitHub Actions 使用 Node.js 24。
+使用 Node.js 22.12 或更新版本和支持 WebGL 2 的浏览器。Pages 工作流使用 Node.js 24。
 
 ```sh
 npm ci
@@ -39,7 +50,7 @@ npm run build
 npm run preview
 ```
 
-浏览器验收脚本在 `/SUSTech-3D-Sandbox/` 子路径托管生产文件，测试桌面输入和移动触控模拟。可设置 `SUSTECH_CHROME_PATH` 使用已安装的 Chrome，或设置 `SUSTECH_SOFTWARE_GL=1` 使用 Chromium SwiftShader。
+验收脚本在 `/SUSTech-3D-Sandbox/` 子路径托管生产文件，测试两个入口、完整特效过程和移动触控模拟。可设置 `SUSTECH_CHROME_PATH` 运行已安装的 Chrome，或设置 `SUSTECH_SOFTWARE_GL=1` 运行 Chromium SwiftShader 测试。
 
 ```sh
 npx playwright install chromium webkit
@@ -47,8 +58,4 @@ npm run test:browser
 npm run test:browser -- webkit
 ```
 
-## 技术架构与部署
-
-Vite 构建静态 TypeScript 应用。Three.js 渲染程序生成的山地、植被和实例化建筑。`src/playground.ts` 使用 Rapier 运行固定步长刚体模拟，`src/descent.ts`、`src/effects.ts` 和 `src/audio.ts` 分别管理下落动画、可复用的视觉特效和合成音效。`src/landscape.ts` 使用预设形状制作地表痕迹。画质档位控制分辨率、阴影和特效密度。
-
-现有的 Pages 工作流从 `main` 构建和发布 `dist/`。仓库 **Settings → Pages** 的发布方式为 **GitHub Actions**。Vite 使用相对资源路径，兼容仓库子路径和静态服务器根路径。
+两套场景共享 Three.js 渲染器和 OrbitControls。校园模型和试验场 Rapier 物理世界分别按需加载。现有 GitHub Actions 工作流继续从 `main` 构建并发布 `dist/`，Pages 使用相对资源路径。

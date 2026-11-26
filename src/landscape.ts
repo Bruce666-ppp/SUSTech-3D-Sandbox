@@ -1,45 +1,17 @@
 import * as T from 'three'
-import { type Bounds, type Point, Instances, inside, makeTerrain, makeWater, planar, randomSource, rectangle, ribbon } from './model'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { type Bounds, type Point, Instances, makeTerrain, planar, randomSource, rectangle, ribbon } from './model'
 import type { Quality, Tool } from './world'
 
-export const landscapeBounds: Bounds = [-72, -62, 72, 62]
-const waterLevel = .23
-const poolCenter: Point = [36, 30]
-const sportsField: Point = [-31, 39]
-const sportsLevel = 1.81
-const lakeEdge = Array.from({ length: 84 }, (_, i): Point => {
-  const a = i / 84 * Math.PI * 2
-  const variation = 1 + .10 * Math.sin(a * 3 + .7) + .045 * Math.cos(a * 5)
-  return [poolCenter[0] + 17 * Math.cos(a) * variation, poolCenter[1] + 12.6 * Math.sin(a) * variation]
-})
-const hills = [
-  [-54, -34, 19, 231], [-34, -47, 25, 205], [-11, -51, 20, 186], [11, -49, 18, 203],
-  [33, -43, 24, 201], [57, -36, 21, 219], [62, -5, 16, 158], [-57, -6, 13, 204],
-  [-56, 24, 9, 218], [59, 43, 8, 153], [-43, 47, 8, 201],
-]
-
-export function isWater(x: number, z: number) { return inside(x, z, lakeEdge) }
+export const landscapeBounds: Bounds = [-64, -46, 64, 46]
 
 export function ground(x: number, z: number) {
-  let y = 1.4 + .74 * Math.sin(x * .105 + z * .16) + .58 * Math.cos(z * .17 - x * .13) - .015 * z
-  for (const [a, b, height, width] of hills) y += height * Math.exp(-((x - a) ** 2 + (z - b) ** 2) / width)
-  y += T.MathUtils.smoothstep(y, 5, 22) * (.78 * Math.sin(x * .52 + z * .17) + .54 * Math.cos(z * .62 - x * .16))
-  const bank = Math.hypot((x - poolCenter[0]) / 18.7, (z - poolCenter[1]) / 14)
-  if (bank < 1.37) y = T.MathUtils.lerp(-1.45, y, T.MathUtils.smoothstep(bank, .72, 1.37))
-  const field = Math.hypot((x - sportsField[0]) / 12.8, (z - sportsField[1]) / 7.8)
-  if (field < 1.2) y = T.MathUtils.lerp(sportsLevel, y, T.MathUtils.smoothstep(field, .89, 1.20))
-  return bank < 1.2 && isWater(x, z) ? Math.min(y, waterLevel - .44) : y
+  const grading = Math.max(Math.abs(x) / 55, Math.abs(z + 2) / 39)
+  const berm = T.MathUtils.smoothstep(grading, .79, 1.18)
+  const rock = .55 + .35 * Math.cos(x * .18 - z * .11) + .14 * Math.sin(x * .42 + z * .17)
+  const apron = T.MathUtils.smoothstep(z, 13, 33)
+  return .24 + .16 * Math.sin(x * .089 + z * .13) - .18 * apron + berm * rock * (z < 7 ? 5.9 : 2.3)
 }
-
-const roads: { points: Point[], width: number }[] = [
-  { points: [[-71, 32], [-55, 31], [-40, 27], [-21, 26], [-10, 26], [6, 24], [18, 19], [25, 12], [40, 9], [56, 8], [71, 13]], width: 2.9 },
-  { points: [[-49, 30], [-48, 17], [-47, 3], [-35, -12], [-23, -18], [-6, -18], [10, -17], [26, -14], [42, -10], [50, 1], [55, 8]], width: 2.2 },
-  { points: [[-23, -18], [-19, -9], [-18, 2], [-21, 12], [-21, 26]], width: 1.6 },
-  { points: [[-21, 12], [-5, 10.5], [4, 9.3], [16, 5.2], [25, 0], [26, -14]], width: 1.7 },
-  { points: [[7, 24], [11, 30], [16, 38], [21, 46], [36, 48], [52, 43], [61, 35]], width: .72 },
-  { points: [[-46, -6], [-54, -21], [-44, -29], [-33, -30], [-25, -37], [-11, -42], [5, -39], [22, -37], [28, -29], [44, -26], [50, -11]], width: .69 },
-  { points: [[-28, 27], [-40, 35], [-42, 47], [-30, 51], [-14, 50], [-8, 42], [-9, 28]], width: .70 },
-]
 
 function crackTexture() {
   const canvas = document.createElement('canvas')
@@ -83,9 +55,9 @@ function crackTexture() {
 }
 
 const markStyles = {
-  orb: { radius: 3.7, depth: .49, tint: '#efb994' },
-  pod: { radius: 6.1, depth: .75, tint: '#acc9b7' },
-  core: { radius: 10, depth: 1.14, tint: '#d2b3d0' },
+  canister: { radius: 3.7, depth: .49, tint: '#efb994' },
+  crate: { radius: 6.1, depth: .75, tint: '#acc9b7' },
+  core: { radius: 10, depth: 1.14, tint: '#e1a68e' },
 }
 
 type Stamp = {
@@ -93,78 +65,102 @@ type Stamp = {
   radius: number, depth: number, age: number, progress: number, angle: number,
 }
 
-export function createLandscape(root: T.Group, plots: { x: number, z: number, radius: number }[]) {
-  const cedar = new T.Color('#4e775e')
-  const meadow = new T.Color('#8d9f6b')
-  const summit = new T.Color('#769172')
+
+export function createLandscape(root: T.Group) {
+  const gravel = new T.Color('#a79888')
+  const slope = new T.Color('#74675e')
   const tint = new T.Color()
-  const terrain = makeTerrain(landscapeBounds, 112, ground, (x, z, y) => {
-    const detail = Math.sin(x * .25 + z * .11) * Math.sin(z * .31 - x * .15)
-    tint.copy(y > 7 ? cedar : meadow).lerp(summit, T.MathUtils.smoothstep(y, 8, 26) * .62)
-    return tint.multiplyScalar(.91 + Math.cos(.098 * (x + z)) * .08 + detail * .115)
-  }, -4.9)
+  const terrain = makeTerrain(landscapeBounds, 104, ground, (x, z, y) => {
+    const grain = Math.sin(x * .72 + z * .81) * Math.cos(z * .32 - x * .09)
+    return tint.copy(gravel).lerp(slope, T.MathUtils.smoothstep(y, .5, 5.5)).multiplyScalar(.92 + grain * .08)
+  }, -3.8, ['#80726b', '#655950', '#4d4542', '#353438'])
   root.add(terrain.surface, terrain.rim)
-  const water = makeWater()
-  const lake = new T.Mesh(planar(lakeEdge, () => waterLevel), water.material)
-  root.add(lake)
 
   const surfaces = [terrain.surface.geometry]
-  const pavement = new T.MeshStandardMaterial({ color: '#c5bfaa', roughness: .94, side: T.DoubleSide })
-  const path = new T.MeshStandardMaterial({ color: '#d6c49d', roughness: 1, side: T.DoubleSide })
-  const drape = (geometry: T.BufferGeometry, material: T.Material) => {
-    const surface = new T.Mesh(geometry, material)
-    surface.receiveShadow = true
-    root.add(surface)
+  const concrete = new T.MeshStandardMaterial({ color: '#687476', roughness: .86, side: T.DoubleSide })
+  const road = new T.MeshStandardMaterial({ color: '#4f585d', roughness: .96, side: T.DoubleSide })
+  const tape = new T.MeshBasicMaterial({ color: '#d5a65e', side: T.DoubleSide })
+  const joints = new T.MeshBasicMaterial({ color: '#545d60', side: T.DoubleSide })
+  const paint = new T.MeshBasicMaterial({ color: '#bac1b5', side: T.DoubleSide })
+  const paintAt = (x: number, z: number) => ground(x, z) + .083
+  const batches = new Map<T.Material, T.BufferGeometry[]>()
+
+  function lay(geometry: T.BufferGeometry, material: T.Material) {
+    const batch = batches.get(material)
+    if (batch) batch.push(geometry)
+    else batches.set(material, [geometry])
+  }
+
+  const contour: Point[] = [[-46, -29], [44, -29], [51, -22], [51, 19], [40, 27], [-43, 27], [-50, 20], [-50, -19]]
+  const panels = new T.PlaneGeometry(100, 56, 50, 28).rotateX(-Math.PI / 2).translate(0, 0, -1)
+  const vertices = panels.getAttribute('position')
+  for (let i = 0; i < vertices.count; i++) vertices.setY(i, ground(vertices.getX(i), vertices.getZ(i)) + .038)
+  lay(panels, concrete)
+  lay(ribbon([[-59, 32], [-40, 32], [-15, 32], [13, 32], [39, 32], [59, 26]], 5.8, (x, z) => ground(x, z) + .058), road)
+  lay(ribbon([...contour, contour[0]], .12, paintAt), paint)
+  for (let x = -42; x <= 43; x += 14) lay(ribbon([[x, -29], [x, 27]], .060, paintAt), joints)
+  for (let z = -22; z <= 24; z += 11) lay(ribbon([[-49, z], [49, z]], .064, paintAt), joints)
+  for (let x = -49; x < 51; x += 7) lay(planar(rectangle(x, 32, 2.9, .14), paintAt), tape)
+
+  for (const [x, z] of [[-22, 19], [3, 20], [27, 19]]) {
+    const outline = rectangle(x, z, 8.8, 6.4)
+    lay(ribbon([...outline, outline[0]], .11, paintAt), paint)
+    lay(ribbon([[x - 1.15, z], [x + 1.15, z]], .15, paintAt), tape)
+    lay(ribbon([[x, z - 1.15], [x, z + 1.15]], .15, paintAt), tape)
+    for (let i = -4; i < 5; i++) lay(planar(rectangle(x + i * .55, z + 2.5, .43, .99, -.4), paintAt), tape)
+  }
+  for (const [material, batch] of batches) {
+    const geometry = batch.length === 1 ? batch[0] : mergeGeometries(batch)
+    if (batch.length > 1) for (const item of batch) item.dispose()
+    const mesh = new T.Mesh(geometry, material)
+    mesh.receiveShadow = true
+    root.add(mesh)
     surfaces.push(geometry)
   }
-  for (const road of roads) drape(ribbon(road.points, road.width, (x, z) => ground(x, z) + .076), road.width > 1 ? pavement : path)
-  const walk = [...lakeEdge.filter((_, i) => i % 3 === 0), lakeEdge[0]].map(([x, z]): Point => [36 + (x - 36) * 1.095, 30 + (z - 30) * 1.095])
-  drape(ribbon(walk, .83, (x, z) => Math.max(waterLevel + .21, ground(x, z) + .09)), path)
 
-  const [fieldX, fieldZ] = sportsField
-  const trackLevel = sportsLevel + .15
-  const lane = (scale: number) => Array.from({ length: 65 }, (_, i): Point => {
-    const a = i / 64 * Math.PI * 2
-    return [fieldX + scale * Math.cos(a) * 11, fieldZ + scale * Math.sin(a) * 6.4]
-  })
-  const athleticSurface = (color: string) => new T.MeshStandardMaterial({ color, roughness: .94, side: T.DoubleSide })
-  drape(planar(lane(1).slice(0, -1), (x, z) => Math.max(trackLevel, ground(x, z) + .075)), athleticSurface('#ad6c54'))
-  drape(planar(rectangle(fieldX, fieldZ, 14.3, 7.45), (x, z) => Math.max(trackLevel + .026, ground(x, z) + .10)), athleticSurface('#779761'))
-  const paint = new T.MeshBasicMaterial({ color: '#e0d9bf', side: T.DoubleSide })
-  for (const scale of [.87, .92, .97]) drape(ribbon(lane(scale), .064, (x, z) => Math.max(trackLevel + .06, ground(x, z) + .125)), paint)
-  drape(ribbon([[fieldX, 35.4], [fieldX, 42.6]], .071, (x, z) => Math.max(trackLevel + .07, ground(x, z) + .14)), paint)
-
-  const leaves = new Instances()
-  const trunks = new Instances()
-  const stones = new Instances()
-  const rng = randomSource(962111)
-  const palette = ['#4a7556', '#698b60', '#547e63', '#3b6957', '#839864', '#729b72']
-  const roadNodes = roads.flatMap(({ points, width }) => points.slice(1).flatMap(([x, z], i) => {
-    const [a, b] = points[i]
-    const n = Math.ceil(Math.hypot(x - a, z - b) / 2)
-    return Array.from({ length: n + 1 }, (_, j) => [T.MathUtils.lerp(a, x, j / n), T.MathUtils.lerp(b, z, j / n), width * .54 + .86])
-  }))
-  for (let i = 0; i < 3420; i++) {
-    const x = -70 + rng() * 140
-    const z = -60 + rng() * 120
-    if (Math.abs(x - fieldX) < 12 && Math.abs(z - fieldZ) < 8) continue
-    if (isWater(x, z) || plots.some((p) => Math.hypot(x - p.x, z - p.z) < p.radius)) continue
-    if (roadNodes.some(([a, b, r]) => Math.abs(a - x) < r && Math.hypot(a - x, b - z) < r)) continue
+  const rng = randomSource(6882)
+  const barriers = new Instances()
+  const posts = new Instances()
+  const equipment = new Instances()
+  const boulders = new Instances()
+  const shrubs = new Instances()
+  for (let x = -54; x <= 54; x += 3.8) {
+    const z = -33
     const y = ground(x, z)
-    const forest = Math.sin(x * .14 + z * .272) * Math.cos(z * .18 - x * .22)
-    const size = .64 + rng() * 1.15
-    if (rng() < (y > 5 ? .54 + forest * .22 : .19 + forest * .12)) {
-      const color = palette[i % palette.length]
-      trunks.add(x, y + size * .43, z, size * .11, size * .96, size * .11, '#776a53')
-      leaves.add(x, y + size * 1.09, z, size * .90, size * (1.14 + rng() * .3), size, color, rng() * Math.PI)
-      if (i % 5 === 0) leaves.add(x + size * .35, y + size * .83, z + size * .17, size * .60, size * .8, size * .65, color, .26)
-    } else if (y > 9 && i % 7 === 0) stones.add(x, y + .15, z, size * .62, size * .41, size * .54, '#939485', rng() * 4)
+    barriers.add(x, y + .44, z, 3.3, .79, 1.32, '#73797b')
+    barriers.add(x, y + .93, z, 2.92, .20, 1.01, '#5b6569')
+    if (Math.round(x) % 3 === 0) barriers.add(x, y + .57, z + .66, 1.24, .18, .038, '#ba9160')
   }
-  const canopies = leaves.mesh(new T.IcosahedronGeometry(.69, 1), new T.MeshStandardMaterial({ roughness: 1, flatShading: true }))
-  const stems = trunks.mesh(new T.CylinderGeometry(.36, .65, 1, 5), new T.MeshStandardMaterial({ roughness: .98 }), false)
-  root.add(canopies, stems, stones.mesh(new T.DodecahedronGeometry(.71), new T.MeshStandardMaterial({ roughness: .98 }), false))
-  const maxLeaves = canopies.count
-  const maxStems = stems.count
+  for (const [x, z] of [[-46, -27], [43, -27], [-49, 17], [47, 21]]) {
+    const y = ground(x, z)
+    posts.add(x, y + 2.6, z, .24, 5.2, .24, '#465459')
+    equipment.add(x, y + .16, z, .95, .32, .91, '#7a8081')
+    equipment.add(x, y + 5.07, z, 1.98, .16, .36, '#4b5659')
+    for (const side of [-1, 1]) equipment.add(x + side * .75, y + 4.96, z + .21, .65, .37, .48, '#d9ba83', 0, .25)
+  }
+  for (const [x, z] of [[-54, -14], [-54, 6], [45, 27], [48, 27], [-39, 25], [25, -26]]) {
+    const y = ground(x, z)
+    equipment.add(x, y + .58, z, 1.75, 1.16, 1.49, '#596b6d', .13)
+    equipment.add(x, y + 1.19, z, 1.86, .13, 1.60, '#879492', .13)
+    equipment.add(x, y + .54, z + .74, 1.15, .21, .035, '#cf9f63', .13)
+  }
+
+  for (let i = 0; i < 330; i++) {
+    const x = (rng() - .5) * 124
+    const z = (rng() - .5) * 88
+    if (Math.abs(x) < 53 && z < 38 && z > -34) continue
+    const s = .25 + rng() ** 2 * 2.35
+    const y = ground(x, z)
+    boulders.add(x, y + s * .1, z, s * (1.3 + rng()), s * (.4 + rng()), s * (1 + rng()), i % 3 ? '#948276' : '#a69683', rng() * 6)
+    if (i % 4 === 0) shrubs.add(x + .6, y + .23, z - .26, .81, .59, .9, '#81856d', rng() * 5)
+  }
+  const block = new T.BoxGeometry()
+  const mat = new T.MeshStandardMaterial({ roughness: .94 })
+  const crags = boulders.mesh(new T.DodecahedronGeometry(.61), mat)
+  const scrub = shrubs.mesh(new T.IcosahedronGeometry(.69), mat)
+  root.add(barriers.mesh(block, mat), equipment.mesh(block, mat), posts.mesh(new T.CylinderGeometry(.53, .68, 1, 7), mat), crags, scrub)
+  const rockCount = crags.count
+  const scrubCount = scrub.count
 
   const initial = surfaces.map((geometry) => {
     const positions = geometry.getAttribute('position') as T.BufferAttribute
@@ -219,9 +215,9 @@ export function createLandscape(root: T.Group, plots: { x: number, z: number, ra
   }
 
   return {
-    terrain: terrain.surface, lake, deformation,
+    terrain: terrain.surface, deformation,
     stamp(tool: Tool, x: number, z: number) {
-      if (isWater(x, z) || Math.abs(x) > 69 || Math.abs(z) > 59) return
+      if (Math.abs(x) > 62 || Math.abs(z) > 44) return
       const mark = marks[nextMark++ % marks.length]
       const style = markStyles[tool]
       Object.assign(mark, { x, z, radius: style.radius, depth: style.depth, age: 0, progress: 0, angle: nextMark * 1.4 })
@@ -232,7 +228,6 @@ export function createLandscape(root: T.Group, plots: { x: number, z: number, ra
       moving = true
     },
     update(dt: number) {
-      water.time.value += dt
       if (!moving) return false
       moving = false
       for (const mark of marks) {
@@ -247,10 +242,10 @@ export function createLandscape(root: T.Group, plots: { x: number, z: number, ra
       return true
     },
     setQuality(quality: Quality) {
-      canopies.castShadow = quality !== 'low'
+      crags.castShadow = quality !== 'low'
       const fraction = quality === 'low' ? .57 : quality === 'medium' ? .79 : 1
-      canopies.count = Math.floor(maxLeaves * fraction)
-      stems.count = Math.floor(maxStems * fraction)
+      crags.count = Math.floor(rockCount * fraction)
+      scrub.count = Math.floor(scrubCount * fraction)
     },
     reset() {
       for (const mark of marks) mark.mesh.visible = false
