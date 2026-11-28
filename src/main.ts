@@ -296,11 +296,11 @@ function tap(x: number, y: number) {
   }
   const now = performance.now()
   const ready = readyAt[selected] <= now
-  const point = view.model.aim(cursor, selected, ready)
-  if (!point) return
+  const target = view.model.aim(cursor, selected, ready, true)
+  if (!target) return
   if (!ready) { showToast('cooldown'); return }
   audio.unlock()
-  if (!view.model.drop(selected, point, camera)) { showToast('launchBusy'); return }
+  if (!view.model.drop(selected, target, camera)) { showToast('launchBusy'); return }
   readyAt[selected] = now + tools[selected].seconds * 1000
   updateTools(now)
   renderMetrics()
@@ -537,7 +537,8 @@ if (new URLSearchParams(location.search).has('qa')) {
       ready: !!view, mode: view?.kind, selected: sandbox ? selected : undefined, language, quality, sound,
       buildings: campus?.buildings, elevationRange: campus?.elevationRange, stats: sandbox?.stats(), readyAt: sandbox ? { ...readyAt } : undefined,
       camera: camera.position.toArray(), target: controls?.target.toArray(),
-      structureScreen: projected(game?.structureTarget), terrainScreen: projected(game?.terrainTarget),
+      structureScreen: projected(game?.structureTarget), edgeScreen: projected(game?.edgeTarget), terrainScreen: projected(game?.terrainTarget),
+      structureStages: game?.structureStages, roofDrop: game?.roofDrop,
       drops: game?.drops, tilt: game?.tilt, offset: game?.offset, groundOffset: game?.groundOffset, lastImpact: game?.lastImpact,
       openParachutes: game?.openParachutes, landingsClear: game?.landingsClear,
       memory: { ...renderer?.info.memory }, calls: renderer?.info.render.calls,

@@ -19,6 +19,11 @@ export interface CameraPose {
   target: Vec
 }
 
+export interface DropTarget {
+  point: Vector3
+  structure?: number
+}
+
 export interface LandmarkDimensions {
   source: string
   buildings: { label?: Localized, floors: number, heightMeters?: number }[]
@@ -74,18 +79,21 @@ export interface SceneStats {
 
 export interface Playground extends SceneModel {
   update(dt: number, pointScale: number): number
-  aim(ray: Raycaster | undefined, tool: Tool, available: boolean): Vector3 | undefined
-  drop(tool: Tool, point: Vector3, camera: Camera): boolean
+  aim(ray: Raycaster | undefined, tool: Tool, available: boolean, checkRoof?: boolean): DropTarget | undefined
+  drop(tool: Tool, target: DropTarget, camera: Camera): boolean
   rebuild(): void
   shadowsMoving(): boolean
   stats(): SceneStats
   inspect(): {
-    drops: { tool: Tool, progress: number, height: number }[]
+    drops: { tool: Tool, progress: number, height: number, structure?: number }[]
     tilt: number
     offset: number
     groundOffset: number
     lastImpact?: Tool
     structureTarget: Vector3
+    edgeTarget: Vector3
+    structureStages: string[]
+    roofDrop: number
     terrainTarget: Vector3
     openParachutes: number
     landingsClear: boolean

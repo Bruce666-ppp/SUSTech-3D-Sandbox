@@ -1,5 +1,5 @@
 import * as T from 'three'
-import { tools, toolOrder, type Tool } from './world'
+import { tools, toolOrder, type DropTarget, type Tool } from './world'
 
 type Flight = {
   tool: Tool
@@ -9,6 +9,7 @@ type Flight = {
   guide: T.Group
   trace: T.Line
   target: T.Vector3
+  structure?: number
   range: number
   age: number
   nextMote: number
@@ -141,12 +142,14 @@ export class Descent {
     return low
   }
 
-  launch(tool: Tool, point: T.Vector3, camera: T.Camera) {
+  launch(tool: Tool, target: DropTarget, camera: T.Camera) {
     const flight = this.slots.find((slot) => slot.tool === tool && !slot.root.visible)
     if (!flight) return false
+    const { point, structure } = target
     flight.age = 0
     flight.nextMote = 0
     flight.target.copy(point)
+    flight.structure = structure
     flight.range = this.fitRange(tool, point, camera)
     flight.guide.position.set(point.x, point.y + .17, point.z)
     flight.guide.scale.setScalar(1)
@@ -162,14 +165,14 @@ export class Descent {
     return true
   }
 
-  update(dt: number, impact: (tool: Tool, point: T.Vector3) => void, mote: (tool: Tool, point: T.Vector3) => void) {
+  update(dt: number, impact: (tool: Tool, point: T.Vector3, structure?: number) => void, mote: (tool: Tool, point: T.Vector3) => void) {
     for (const f of this.slots) {
       if (!f.root.visible) continue
       f.age += dt
       const t = Math.min(1, f.age / tools[f.tool].descent)
       if (t === 1) {
         f.root.visible = false
-        impact(f.tool, f.target)
+        impact(f.tool, f.target, f.structure)
         continue
       }
       this.pose(f.tool, f.target, t, f.range, f.model.position)
@@ -193,7 +196,7 @@ export class Descent {
 
   inspect() {
     return this.slots.filter(({ root }) => root.visible).map((f) => ({
-      tool: f.tool, progress: f.age / tools[f.tool].descent, height: f.model.position.y - f.target.y,
+      tool: f.tool, progress: f.age / tools[f.tool].descent, height: f.model.position.y - f.target.y, structure: f.structure,
     }))
   }
 

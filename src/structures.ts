@@ -199,6 +199,16 @@ export function createStructures(root: T.Group) {
     light: new T.InstancedMesh(new T.TetrahedronGeometry(.7), material(.36, .11), colors.light.length),
     fracture: new T.InstancedMesh(box, material(.98), colors.fracture.length),
   }
+  const pickable = [meshes.wall, meshes.window, meshes.ridge, meshes.light]
+  const owners = new Map<T.Object3D, Uint8Array>(pickable.map((mesh) => [mesh, new Uint8Array(mesh.count)]))
+  for (const [index, structure] of structures.entries()) {
+    for (const { parts } of structure.modules) {
+      for (const part of parts) {
+        const lookup = owners.get(meshes[part.kind])
+        if (lookup) lookup[part.index] = index
+      }
+    }
+  }
   for (const kind of Object.keys(meshes) as PartKind[]) {
     const mesh = meshes[kind]
     mesh.frustumCulled = false
@@ -224,7 +234,10 @@ export function createStructures(root: T.Group) {
   }
 
   function upload() {
-    for (const mesh of Object.values(meshes)) mesh.instanceMatrix.needsUpdate = true
+    for (const mesh of Object.values(meshes)) {
+      mesh.instanceMatrix.needsUpdate = true
+      mesh.boundingSphere = null
+    }
   }
 
   function charModule(module: Module, scorched: boolean) {
@@ -254,5 +267,11 @@ export function createStructures(root: T.Group) {
   }
   reset()
 
-  return { structures, pose, upload, reset, scorch: (module: Module) => charModule(module, true) }
+  function pick(ray: T.Raycaster, groundDistance: number) {
+    const hit = ray.intersectObjects(pickable, false)[0]
+    if (!hit || hit.instanceId === undefined || hit.distance > groundDistance) return undefined
+    return { point: hit.point, structure: owners.get(hit.object)![hit.instanceId] }
+  }
+
+  return { structures, pose, upload, reset, pick, scorch: (module: Module) => charModule(module, true) }
 }

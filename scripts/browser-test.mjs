@@ -10,6 +10,8 @@ const prefix = '/SUSTech-3D-Sandbox/'
 const engine = process.argv[2] ?? process.env.SUSTECH_BROWSER ?? 'chromium'
 const results = resolve(process.env.SUSTECH_SCREENSHOT_DIR ?? 'test-results')
 const tools = [['canister', 1], ['crate', 5], ['core', 15]]
+const previousFragments = { canister: 2, crate: 42, core: 83 }
+const minimumRuins = { canister: 1, crate: 4, core: 10 }
 const clockReset = { canister: 0, crate: 0, core: 0 }
 const issues = []
 assert.ok(['chromium', 'webkit'].includes(engine), 'Use chromium or webkit')
@@ -244,6 +246,7 @@ try {
   await page.click('#zoom-in')
 
   const effects = []
+  const ruins = []
   const frames = new Set()
   const motion = []
   for (const [tool, seconds] of tools) {
@@ -254,6 +257,7 @@ try {
     await clickTarget(page)
     const airborne = await read(page)
     assert.equal(airborne.drops[0]?.tool, tool)
+    assert.equal(airborne.drops[0]?.structure, 0)
     assert.ok(airborne.drops[0].height > 3)
     assert.equal(airborne.stats.impacts + airborne.stats.fragments + airborne.stats.scars, 0)
     assert.equal(airborne.stats.parachuting + airborne.stats.landed, 0)
@@ -293,6 +297,7 @@ try {
     assert.equal(moved.stats.impacts, 1)
     assert.equal(moved.stats.scars, 1)
     assert.ok(moved.stats.particles > 15)
+    assert.equal(moved.structureStages[0], 'collapsing')
     if (tool === 'core') {
       await page.waitForFunction(() => {
         const state = window.readSandboxState()
@@ -300,41 +305,40 @@ try {
       })
     }
     frames.add(await shot(page, `${tool}-impact`))
-    if (tool !== 'canister') {
-      await page.waitForFunction((count) => {
-        const state = window.readSandboxState()
-        return state.stats.ruined >= count && state.openParachutes >= count && state.stats.landed === 0
-      }, tool === 'core' ? 3 : 1)
-      await page.getByText('卡通角色正在伞降', { exact: true }).waitFor()
-      if (tool === 'core') await shot(page, 'film-backlot-parachutes')
-      await page.waitForFunction(() => {
-        const { stats } = window.readSandboxState()
-        return stats.parachuting === 0 && stats.landed === stats.ruined && stats.landed > 0
-      })
-      await page.waitForFunction(() => Number(document.querySelector('#landed').textContent) > 0)
-    }
+    await page.waitForFunction((count) => {
+      const state = window.readSandboxState()
+      return state.stats.ruined >= count && state.openParachutes >= count && state.stats.landed === 0
+    }, tool === 'core' ? 3 : 1)
+    await page.getByText('卡通角色正在伞降', { exact: true }).waitFor()
+    if (tool === 'core') await shot(page, 'film-backlot-parachutes')
+    await page.waitForFunction(() => {
+      const { stats } = window.readSandboxState()
+      return stats.parachuting === 0 && stats.landed === stats.ruined && stats.landed > 0
+    })
+    await page.waitForFunction(() => Number(document.querySelector('#landed').textContent) > 0)
     await page.waitForFunction(() => window.readSandboxState().stats.particles === 0)
     const aftermath = await read(page)
     assert.equal(aftermath.landingsClear, true)
+    assert.equal(aftermath.structureStages[0], 'ruined')
+    assert.ok(aftermath.stats.ruined >= minimumRuins[tool], `Expected at least ${minimumRuins[tool]} ruined sets for ${tool}`)
+    assert.ok(aftermath.stats.fragments > previousFragments[tool])
     assert.ok(aftermath.stats.fragments >= moved.stats.fragments)
     assert.equal(aftermath.stats.scars, 1)
     assert.equal(aftermath.stats.impacts, 1)
     assert.ok(aftermath.groundOffset < -.4)
     assert.ok(aftermath.offset > .5 && aftermath.tilt > .1)
     effects.push(aftermath.stats.fragments)
+    ruins.push(aftermath.stats.ruined)
     if (tool === 'canister') {
-      assert.ok(aftermath.stats.damaged > 0 && aftermath.stats.ruined === 0)
-      assert.equal(aftermath.stats.parachuting + aftermath.stats.landed, 0)
+      assert.ok(aftermath.roofDrop > 2.4, `Expected the roof panels to settle below the former top floor, received ${aftermath.roofDrop}`)
+      await shot(page, 'film-backlot-canister')
     }
-    if (tool === 'core') {
-      assert.ok(aftermath.stats.ruined >= 3)
-      await shot(page, 'film-backlot-ruins')
-    }
-    report(`${tool} falls before contact and changes the scene over time. ${aftermath.stats.fragments} released modules, ${aftermath.stats.collisions} collisions, peak rotation ${aftermath.tilt.toFixed(2)} rad.`)
-    if (tool !== 'canister') report(`${aftermath.stats.landed} characters deploy canopies after the set collapses and remain visible after landing.`)
+    if (tool === 'core') await shot(page, 'film-backlot-ruins')
+    report(`${tool}: ${aftermath.stats.ruined} ruined sets, ${aftermath.stats.fragments} released modules, ${aftermath.stats.landed} parachute landings.`)
   }
   assert.equal(frames.size, 6)
   assert.ok(effects[0] < effects[1] && effects[1] < effects[2])
+  assert.ok(ruins[0] < ruins[1] && ruins[1] < ruins[2])
   assert.ok(motion[1] < motion[0] && motion[0] < motion[2], `Unexpected descent profiles: ${motion}`)
   report('The three flight shapes, impact frames, motion profiles and effect tiers differ.')
   await page.waitForFunction((names) => names.every((name) => !document.querySelector(`#tool-${name}`).classList.contains('is-cooling')), tools.map(([name]) => name))
@@ -348,6 +352,14 @@ try {
   assert.equal(rebuilt.groundOffset, 0)
   assert.equal(rebuilt.openParachutes, 0)
   assert.deepEqual(rebuilt.drops, [])
+
+  await clickTarget(page, 'edgeScreen')
+  assert.equal((await read(page)).drops[0]?.structure, 7)
+  await page.waitForFunction(() => window.readSandboxState().structureStages[7] === 'ruined')
+  assert.equal((await read(page)).structureStages[0], 'intact')
+  await page.click('#rebuild')
+  assert.deepEqual((await read(page)).stats, initial.stats)
+  report('A canister hit on a pitched roof at the edge of the backlot collapses the selected building.')
 
   await toolButton(page, 'core').click()
   await clickTarget(page, 'terrainScreen')

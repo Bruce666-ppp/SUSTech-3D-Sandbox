@@ -55,9 +55,9 @@ function crackTexture() {
 }
 
 const markStyles = {
-  canister: { radius: 3.7, depth: .49, tint: '#efb994' },
-  crate: { radius: 6.1, depth: .75, tint: '#acc9b7' },
-  core: { radius: 10, depth: 1.14, tint: '#e1a68e' },
+  canister: { radius: 4.5, depth: .58, tint: '#efb994' },
+  crate: { radius: 7.4, depth: .89, tint: '#acc9b7' },
+  core: { radius: 12.1, depth: 1.32, tint: '#e1a68e' },
 }
 
 type Stamp = {

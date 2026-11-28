@@ -7,12 +7,12 @@ import { createLandscape, ground, landscapeBounds } from './landscape'
 import { disposeScene, randomSource } from './model'
 import { Parachutes } from './parachutes'
 import { createStructures, type Module, type Structure } from './structures'
-import { tools, type Playground, type Tool } from './world'
+import { tools, type DropTarget, type Playground, type Tool } from './world'
 
 const timing = {
-  canister: { reach: 4.6, separation: .12, drift: 4.8 },
-  crate: { reach: 12.5, separation: .16, drift: 8.5 },
-  core: { reach: 23.8, separation: .20, drift: 13.5 },
+  canister: { reach: 7.4, collapseAt: 0, separation: .12, drift: 7.3, lift: 1.8, loft: 2.7, floorLift: .26, lean: 2.15 },
+  crate: { reach: 19.3, collapseAt: 16.6, separation: .16, drift: 10.6, lift: 4.8, loft: 4.2, floorLift: .12, lean: 2.53 },
+  core: { reach: 35.7, collapseAt: 35.7, separation: .20, drift: 16.1, lift: 3.1, loft: 4.5, floorLift: 1.63, lean: 3.36 },
 }
 
 type Release = { structure: Structure, module: Module, tool: Tool, impact: T.Vector3, time: number }
@@ -46,12 +46,14 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
   const events = new RAPIER.EventQueue(true)
   const releases: Release[] = []
   const released = new Set<Module>()
+  const colliderOwners = new Map<number, number>()
   const rng = randomSource(241543)
   const position = new T.Vector3()
   const rotation = new T.Quaternion()
   const direction = new T.Vector3()
   const contact = new T.Vector3()
   const hitPoint = new T.Vector3()
+  const aimTarget: DropTarget = { point: hitPoint }
   let elapsed = 0
   let accumulator = 0
   let nextSound = 0
@@ -78,43 +80,48 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
 
   function createWorld() {
     world = new RAPIER.World({ x: 0, y: -18.6, z: 0 })
+    colliderOwners.clear()
     world.timestep = 1 / 60
     world.createCollider(RAPIER.ColliderDesc.trimesh(landVertices, landIndices).setFriction(.93))
     world.createCollider(RAPIER.ColliderDesc.cuboid(86, .4, 68).setTranslation(0, -4.13, 0).setFriction(.87))
-    for (const structure of buildings.structures) {
+    for (const [index, structure] of buildings.structures.entries()) {
       const { base, bottom, plan } = structure
       const support = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(plan.x, (base + bottom) * .5, plan.z)
         .setRotation(structure.modules[0].rotation))
-      world.createCollider(RAPIER.ColliderDesc.cuboid((plan.w + .6) * .5, (base - bottom) * .5, (plan.d + .6) * .5).setFriction(.92), support)
+      const foundation = world.createCollider(RAPIER.ColliderDesc.cuboid((plan.w + .6) * .5, (base - bottom) * .5, (plan.d + .6) * .5).setFriction(.92), support)
+      colliderOwners.set(foundation.handle, index)
       for (const module of structure.modules) {
         const { x, y, z } = module.position
         module.body = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(x, y, z).setRotation(module.rotation)
           .setCanSleep(true).setAngularDamping(.35).setLinearDamping(.23))
-        world.createCollider(RAPIER.ColliderDesc.cuboid(module.size.x * .484, module.size.y * .479, module.size.z * .484)
+        const collider = world.createCollider(RAPIER.ColliderDesc.cuboid(module.size.x * .484, module.size.y * .479, module.size.z * .484)
           .setDensity(.8).setFriction(.81).setRestitution(.08).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), module.body)
+        colliderOwners.set(collider.handle, index)
       }
     }
     world.step(events)
     events.clear()
   }
 
-  function schedule(tool: Tool, impact: T.Vector3) {
+  function schedule(tool: Tool, impact: T.Vector3, hitStructure?: number) {
     const profile = timing[tool]
-    for (const structure of buildings.structures) {
+    for (const [index, structure] of buildings.structures.entries()) {
       const { x, z, w, d } = structure.plan
       const edge = Math.hypot(Math.max(0, Math.abs(x - impact.x) - w * .43), Math.max(0, Math.abs(z - impact.z) - d * .43))
-      if (edge > profile.reach) continue
+      const direct = hitStructure === index
+      if (!direct && edge > profile.reach) continue
       const top = structure.plan.floors.length - 1
-      const whole = tool === 'core' || (tool === 'crate' && edge < profile.reach * .71)
+      const whole = direct || edge <= profile.collapseAt
       const fixed = structure.modules.filter(({ state, tier }) => state === 'fixed' && (whole || tier === top))
       const distance = (module: Module) => Math.hypot(impact.x - module.position.x, impact.z - module.position.z)
-      const set = whole ? fixed : fixed.sort((a, b) => distance(a) - distance(b)).slice(0, tool === 'canister' ? 2 : 3)
+      const set = whole ? fixed : fixed.sort((a, b) => distance(a) - distance(b)).slice(0, tool === 'canister' ? 3 : 4)
       if (!set.length) continue
       structure.collapse ||= whole
       if (structure.stage === 'intact') structure.stage = 'damaged'
       for (const module of set) {
-        const order = tool === 'core' ? module.tier : tool === 'crate' ? Math.abs(module.tier - 1) : top - module.tier
-        const time = elapsed + .20 + order * profile.separation + edge * .013 + distance(module) * .008 + rng() * .060
+        const order = tool === 'crate' ? Math.abs(module.tier - 1) : module.tier
+        const cadence = tool === 'canister' && whole ? .052 : profile.separation
+        const time = elapsed + .20 + order * cadence + (direct ? 0 : edge * .013) + distance(module) * .008 + rng() * .060
         buildings.scorch(module)
         module.state = 'scheduled'
         releases.push({ structure, module, impact, tool, time })
@@ -126,16 +133,26 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
   function release(item: Release) {
     const { module, structure, tool, impact } = item
     const body = module.body!
-    direction.set(module.position.x - impact.x, 0, module.position.z - impact.z)
-    const distance = direction.length()
-    if (distance < .5) direction.set(rng() - .5, 0, rng() - .5)
-    direction.x += (rng() - .5) * 3.4
-    direction.z += (rng() - .5) * 3.4
+    const dx = module.position.x - impact.x
+    const dz = module.position.z - impact.z
+    const distance = Math.hypot(dx, dz)
+    const tipForward = tool === 'canister' && structure.collapse
+    if (tipForward) {
+      const along = module.position.x - structure.plan.x
+      const ahead = module.position.z - structure.plan.z
+      direction.set(along * .76 + (rng() - .5) * 2.7, 0, 3.6 + ahead * .14 + rng())
+    } else {
+      direction.set(dx, 0, dz)
+      if (distance < .5) direction.set(rng() - .5, 0, rng() - .5)
+      direction.x += (rng() - .5) * 3.4
+      direction.z += (rng() - .5) * 3.4
+    }
     direction.normalize()
     const profile = timing[tool]
-    const drift = profile.drift * (.76 + rng() * .35) * (1 - .43 * Math.min(distance / (profile.reach + 4), 1))
-    const lift = tool === 'crate' ? 4.2 + rng() * 3.6 : tool === 'canister' ? 1.1 + rng() * 2.3 : 2.7 + 1.46 * module.tier + rng() * 4.0
-    const lean = (tool === 'core' ? 2.94 : tool === 'crate' ? 1.83 : 1.55) + rng() * 1.28
+    const swing = tipForward ? 1.24 + module.tier * .23 : 1
+    const drift = profile.drift * swing * (.76 + rng() * .35) * (1 - .43 * Math.min(distance / (profile.reach + 4), 1))
+    const lift = profile.lift + profile.floorLift * module.tier + rng() * profile.loft + (tipForward ? .78 + module.tier * .44 : 0)
+    const lean = profile.lean + rng() * 1.28 + (tipForward ? 1.28 : 0)
     body.setBodyType(RAPIER.RigidBodyType.Dynamic, true)
     body.setLinvel({ x: direction.x * drift, y: lift, z: direction.z * drift }, true)
     body.setAngvel({ x: direction.z * lean, y: (rng() - .5) * (tool === 'crate' ? 2.8 : 1.16), z: -direction.x * lean }, true)
@@ -149,14 +166,14 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
     fragments++
   }
 
-  function impact(tool: Tool, target: T.Vector3) {
+  function impact(tool: Tool, target: T.Vector3, hitStructure?: number) {
     lastAt = target.clone()
     lastImpact = tool
     impacts++
     land.stamp(tool, target.x, target.z)
     effects.erupt(tool, target)
     audio.play(tool)
-    schedule(tool, lastAt)
+    schedule(tool, lastAt, hitStructure)
   }
 
   function updatePhysics(dt: number) {
@@ -214,8 +231,15 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
 
   createWorld()
   root.updateMatrixWorld(true)
-  const center = buildings.structures[0].modules.at(-2)!
-  const structureTarget = center.position.clone().add(new T.Vector3(0, center.size.y * .35, 0))
+  const roofPoint = ({ modules }: Structure) => {
+    const tile = modules.at(-2)!
+    return tile.position.clone().add(new T.Vector3(0, tile.size.y * .35, 0))
+  }
+  const structureTarget = roofPoint(buildings.structures[0])
+  const centerStructure = buildings.structures[0]
+  const centerRoof = centerStructure.modules.filter(({ tier }) => tier === centerStructure.plan.floors.length - 1)
+  const edgeTile = buildings.structures[7].modules.at(-2)!
+  const edgeTarget = edgeTile.position.clone().add(new T.Vector3(0, edgeTile.size.y / 2 + 1.19, 0))
   const terrainTarget = new T.Vector3(3, ground(3, 20), 20)
 
   return {
@@ -237,15 +261,20 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
       return effects.update(dt, pointScale)
     },
     setQuality(value) { land.setQuality(value); effects.setQuality(value) },
-    aim(raycaster, tool, available) {
+    aim(raycaster, tool, available, checkRoof = false) {
       marker.visible = false
       if (!raycaster) return undefined
       const { origin, direction } = raycaster.ray
       const found = world.castRay(new RAPIER.Ray(origin, direction), 760, true)
       if (!found) return undefined
-      raycaster.ray.at(found.timeOfImpact, hitPoint)
+      const owner = colliderOwners.get(found.collider.handle)
+      // Roof details can extend beyond their supporting physics block.
+      const roof = checkRoof && owner === undefined ? buildings.pick(raycaster, found.timeOfImpact) : undefined
+      if (roof) hitPoint.copy(roof.point)
+      else raycaster.ray.at(found.timeOfImpact, hitPoint)
       const [minX, minZ, maxX, maxZ] = landscapeBounds
       if (hitPoint.x < minX || hitPoint.x > maxX || hitPoint.z < minZ || hitPoint.z > maxZ) return undefined
+      aimTarget.structure = roof?.structure ?? owner
       const y = ground(hitPoint.x, hitPoint.z)
       if (Math.abs(hitPoint.y - y) < .27) hitPoint.y += land.deformation(hitPoint.x, hitPoint.z)
       marker.visible = true
@@ -253,10 +282,10 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
       reticleMaterial.color.set(available ? tools[tool].color : '#a9b8b8')
       reticleMaterial.opacity = available ? .91 : .43
       outer.scale.setScalar(tool === 'canister' ? 1.21 : tool === 'crate' ? 1.62 : 2.17)
-      return hitPoint
+      return aimTarget
     },
-    drop(tool, point, camera) {
-      const accepted = descent.launch(tool, point, camera)
+    drop(tool, target, camera) {
+      const accepted = descent.launch(tool, target, camera)
       if (accepted) audio.play(tool === 'canister' ? 'drop-canister' : tool === 'crate' ? 'drop-crate' : 'drop-core')
       return accepted
     },
@@ -289,7 +318,9 @@ export async function createPlayground(audio: AudioEngine): Promise<Playground> 
     inspect: () => ({
       drops: descent.inspect(), tilt: maxTilt, offset: maxOffset, lastImpact,
       groundOffset: lastAt ? land.deformation(lastAt.x, lastAt.z) : 0,
-      structureTarget, terrainTarget, openParachutes: parachutes.open, landingsClear: parachutes.landingsClear,
+      structureTarget, edgeTarget, terrainTarget, structureStages: buildings.structures.map(({ stage }) => stage),
+      roofDrop: centerRoof.reduce((sum, tile) => sum + tile.position.y - tile.body!.translation().y, 0) / centerRoof.length,
+      openParachutes: parachutes.open, landingsClear: parachutes.landingsClear,
     }),
     dispose() {
       if (!occupied) return

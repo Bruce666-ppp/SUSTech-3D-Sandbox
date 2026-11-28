@@ -135,9 +135,9 @@ class ParticleLayer {
 }
 
 const impactStyle = {
-  canister: { flash: 3.6, shake: .42, fade: 6.2, duration: .38, waves: [8], light: 158 },
-  crate: { flash: 4.1, shake: .69, fade: 4.5, duration: .69, waves: [13, 18], light: 253 },
-  core: { flash: 8.8, shake: 1.20, fade: 3.7, duration: .94, waves: [18, 24, 32], light: 396 },
+  canister: { flash: 4.5, shake: .57, fade: 6.0, duration: .49, waves: [10.8, 13], light: 198, chipCount: 18, chipSpread: 9.6 },
+  crate: { flash: 5.2, shake: .89, fade: 4.4, duration: .77, waves: [17, 24], light: 316, chipCount: 34, chipSpread: 14.4 },
+  core: { flash: 10.1, shake: 1.42, fade: 3.6, duration: 1.08, waves: [23, 33, 42], light: 478, chipCount: 62, chipSpread: 18.2 },
 }
 
 type Wave = {
@@ -325,7 +325,7 @@ export class Effects {
     this.shake = Math.max(this.shake, style.shake)
     this.shakeFade = Math.min(this.shakeFade, style.fade)
     if (tool === 'core') this.secondBeat = .26
-    this.chips.scatter(at, Math.ceil((tool === 'canister' ? 12 : tool === 'crate' ? 27 : 53) * this.quality), tool === 'canister' ? 8 : tool === 'crate' ? 12 : 16)
+    this.chips.scatter(at, Math.ceil(style.chipCount * this.quality), style.chipSpread)
     const members = this.waves[tool]
     style.waves.forEach((radius, i) => {
       const wave = members.find(({ mesh }) => !mesh.visible) ?? members.reduce((a, b) => a.age > b.age ? a : b)
@@ -347,16 +347,16 @@ export class Effects {
     flash.mesh.visible = true
 
     if (tool === 'canister') {
-      for (let i = 0; i < 54 * this.quality; i++) {
+      for (let i = 0; i < 68 * this.quality; i++) {
         const a = rng() * Math.PI * 2
         const v = 4.6 + rng() * 8.2
         this.sparks.add(x, y + .18, z, Math.cos(a) * v, 1.1 + rng() * 8, Math.sin(a) * v,
           i % 3 ? '#ffab68' : '#fff0bb', .18 + rng() * .65, .26 + rng() * .65, -12, .89)
       }
-      this.flame(at, 15, 4.5, 3.1, '#ed813f')
-      this.plume(foot, 43, 4.7, 1.9, '#877367', .13)
+      this.flame(at, 20, 5.6, 4, '#ed813f')
+      this.plume(foot, 52, 5.8, 2.0, '#877367', .13)
     } else if (tool === 'crate') {
-      for (let i = 0; i < 116 * this.quality; i++) {
+      for (let i = 0; i < 139 * this.quality; i++) {
         const axis = i % 4 * Math.PI / 2 + (rng() - .5) * .29
         const speed = 3.5 + rng() * 13
         const column = i % 4 === 0
@@ -364,11 +364,11 @@ export class Effects {
           column ? 8.5 + rng() * 13 : .55 + rng() * 4, Math.sin(axis) * speed * (column ? .24 : 1),
           i % 4 ? '#8adcff' : '#effdff', .29 + rng() * 1.15, .42 + rng() * .91, column ? -6 : -9, .86, .24, rng() * .21)
       }
-      this.flame(at, 33, 4.2, 11.7, '#75c0ea')
-      this.plume(foot, 75, 8, 2.9, '#a6acae', .24)
-      this.billow(at, 30, 6.3, 5.6, '#87939e', '#aebec2')
+      this.flame(at, 40, 5.2, 13, '#75c0ea')
+      this.plume(foot, 89, 9.5, 3.1, '#a6acae', .24)
+      this.billow(at, 38, 7.5, 6.4, '#87939e', '#aebec2')
     } else {
-      for (let i = 0; i < 186 * this.quality; i++) {
+      for (let i = 0; i < 216 * this.quality; i++) {
         const a = i * 2.39996
         const v = 4 + rng() * 17
         const lift = i % 3 === 0 ? 12 + rng() * 12 : 1.9 + rng() * 10
@@ -376,10 +376,10 @@ export class Effects {
           Math.cos(a) * v, lift, Math.sin(a) * v, i % 3 ? '#ffaf68' : '#fff0d5', .36 + rng() * 1.58,
           .47 + rng() * 1.65, -9.5, .89, 2.1, rng() * .25)
       }
-      this.flame(at, 65, 7.6, 9.1, '#f16932')
-      this.flame(new T.Vector3(x, y + 1.6, z), 28, 3.8, 11.4, '#ffae63')
-      this.plume(foot, 137, 12.3, 4.1, '#9b8273', .31)
-      this.billow(at, 65, 7.6, 8.1, '#584c48', '#88766d')
+      this.flame(at, 76, 9.2, 10.8, '#f16932')
+      this.flame(new T.Vector3(x, y + 1.6, z), 34, 4.8, 12.4, '#ffae63')
+      this.plume(foot, 156, 14.7, 4.3, '#9b8273', .31)
+      this.billow(at, 76, 9.2, 9.4, '#584c48', '#88766d')
     }
   }
 

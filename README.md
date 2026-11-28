@@ -16,9 +16,9 @@ Campus Backlot is a separate fictional campus film set with a painted sports cou
 
 | Key | Prop | Cooldown | Screen effect |
 | --- | --- | --- | --- |
-| `1` | Flash Canister | 1 s | Amber sparks and localized façade damage |
-| `2` | Pyro Crate | 5 s | Cyan flare, square shockwaves and rising smoke |
-| `3` | Firecloud Core | 15 s | Layered flashes, warm fire and a dark smoke column |
+| `1` | Flash Canister | 1 s | Amber sparks and a full collapse on a direct hit |
+| `2` | Pyro Crate | 5 s | Cyan shockwaves and multiple collapses in nearby scenery |
+| `3` | Firecloud Core | 15 s | Layered fire and smoke with the broadest collapse effect |
 
 After a set reaches its ruined state, a cartoon character jumps into view, opens a colorful parachute and lands in the foreground. The characters and rubble remain visible after the smoke clears. **Rebuild** restores the set and clears drops, characters and cooldowns. [Backlot overview](docs/screenshots/film-backlot.png) · [Backlot ruins](docs/screenshots/film-backlot-ruins.png)
 
