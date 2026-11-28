@@ -16,7 +16,11 @@
 
 The campus scene uses 113 mapped outlines and a 76 × 84 elevation grid. Vertical relief is scaled by 1.32, with visual grading around water and sports surfaces. Engineering uses published heights. Some roofs, façades, building heights and vegetation are stylized. The medical precinct uses mapped footprints. The scene represents the external campus layout.
 
-项目原创内容采用 [MIT 许可证](LICENSE)。运行时许可证与数据授权见 [Three.js](public/licenses/three.txt) 和 [数据版权说明](public/data-notices.txt)。 Original assets and code use the MIT license. Runtime and data notices are included with the project.
+影视试验场使用独立创作的虚构校园布局、影视道具和卡通角色。布景分块、特效强度和伞降轨迹采用游戏内预设。公开地理和高程数据只在校园探索入口加载。
+
+The film backlot uses an original fictional campus layout, cinematic props and cartoon characters. Its modules, effect tiers and parachute animations use game presets. Public geographic and elevation data are loaded by the Campus Explorer entry point.
+
+项目原创内容采用 [MIT 许可证](LICENSE)。运行时许可证与数据授权见 [Three.js](public/licenses/three.txt)、[Rapier](public/licenses/rapier.txt) 和 [数据版权说明](public/data-notices.txt)。 Original assets and code use the MIT license. Runtime and data notices are included with the project.
 
 ## 再生成数据 · Regenerate the data
 
